@@ -37,21 +37,23 @@ def test_sections_and_numbering():
     assert "1. просрочено" in text and "5. без срока" in text
 
 
-def test_far_deadlines_hidden_in_daily_digest_but_shown_in_full():
-    tasks = [task("скоро", eod(2)), task("курсовая", eod(30))]
+def test_nearest_far_tasks_are_shown_even_when_week_is_empty():
+    # Как 17.10: на неделе ничего, ближайшее — через 8 дней. Сводка не должна быть пустой
+    tasks = [task("КР 3", eod(8)), task("Тест", eod(8)), task("Курсовая", eod(40))]
     text, shown = build_digest(tasks, NOW, MSK)
-    assert [t.title for t in shown] == ["скоро"]
-    assert "Ещё 1 с дальним сроком" in text
+    assert "Дальше" in text
+    assert [t.title for t in shown] == ["КР 3", "Тест", "Курсовая"]
+    assert "Ещё" not in text
+
+
+def test_only_nearest_five_far_tasks_in_daily_digest():
+    tasks = [task(f"Задание {d}", eod(d)) for d in range(10, 18)]  # 8 штук дальше недели
+    text, shown = build_digest(tasks, NOW, MSK)
+    assert [t.title for t in shown] == [f"Задание {d}" for d in range(10, 15)]
+    assert "Ещё 3 позже — /tasks" in text
 
     text, shown = build_digest(tasks, NOW, MSK, full=True)
-    assert [t.title for t in shown] == ["скоро", "курсовая"]
-    assert "Позже" in text
-
-
-def test_only_far_tasks_is_not_reported_as_empty():
-    text, _ = build_digest([task("курсовая", eod(30))], NOW, MSK)
-    assert "нет" not in text
-    assert "Ещё 1" in text
+    assert len(shown) == 8 and "Ещё" not in text
 
 
 def test_html_is_escaped():

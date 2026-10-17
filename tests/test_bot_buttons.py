@@ -31,3 +31,14 @@ def test_empty_digest_with_webapp_still_has_open_button():
     kb = done_keyboard([], "https://app.example.org")
     assert kb.inline_keyboard[0][0].text == "📋 Открыть приложение"
     assert done_keyboard([]) is None
+
+
+def test_bot_texts_have_only_valid_html_tags():
+    # «/add <текст>» без экранирования ронял /start: Telegram не знает тега <текст>
+    import re
+
+    from study_bot.bot import COOKIE_HELP, HELP
+
+    for text in (HELP, COOKIE_HELP):
+        assert set(re.findall(r"</?([^\s>/]+)", text)) <= {"b", "i", "code", "a"}
+    assert "&lt;текст&gt;" in HELP

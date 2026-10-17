@@ -8,6 +8,8 @@ from .models import Task
 
 WD = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
 WEEK_DAYS = 7
+# Сколько дальних заданий показывать в вечерней сводке — даже если на неделе пусто, видно ближайшее
+LATER_IN_DIGEST = 5
 
 
 def format_deadline(d: datetime, tz: ZoneInfo) -> str:
@@ -41,14 +43,14 @@ def format_points(p: float) -> str:
 
 def build_digest(tasks: list[Task], now: datetime, tz: ZoneInfo, full: bool = False) -> tuple[str, list[Task]]:
     """Возвращает текст (HTML) и задания в порядке нумерации — для кнопок «Сделано».
-    full=False — вечерняя сводка: только ближайшая неделя, остальное одной строкой."""
+    full=False — вечерняя сводка: неделя целиком и LATER_IN_DIGEST ближайших дальше, остальное одной строкой."""
     today = now.astimezone(tz).date()
     sections: dict[str, list[Task]] = {
         "🔥 Просрочено": [],
         "📌 Сегодня": [],
         "⏰ Завтра": [],
         "📅 На неделе": [],
-        "🗓 Позже": [],
+        "🗓 Дальше": [],
         "🗂 Без срока": [],
     }
     for t in tasks:
@@ -65,11 +67,11 @@ def build_digest(tasks: list[Task], now: datetime, tz: ZoneInfo, full: bool = Fa
         elif days <= WEEK_DAYS:
             sections["📅 На неделе"].append(t)
         else:
-            sections["🗓 Позже"].append(t)
+            sections["🗓 Дальше"].append(t)
 
-    later = sections["🗓 Позже"]
-    if not full:
-        sections["🗓 Позже"] = []
+    later = sorted(sections["🗓 Дальше"], key=lambda t: t.deadline)
+    hidden = 0 if full else max(0, len(later) - LATER_IN_DIGEST)
+    sections["🗓 Дальше"] = later if full else later[:LATER_IN_DIGEST]
 
     shown: list[Task] = []
     blocks: list[str] = []
@@ -82,10 +84,7 @@ def build_digest(tasks: list[Task], now: datetime, tz: ZoneInfo, full: bool = Fa
             lines.append(format_line(len(shown), t, tz))
         blocks.append("\n".join(lines))
 
-    if not blocks:
-        text = "Открытых заданий нет 🎉" if not later else ""
-    else:
-        text = "\n\n".join(blocks)
-    if not full and later:
-        text += f"\n\n<i>Ещё {len(later)} с дальним сроком — /tasks</i>"
+    text = "\n\n".join(blocks) if blocks else "Открытых заданий нет 🎉"
+    if hidden:
+        text += f"\n\n<i>Ещё {hidden} позже — /tasks</i>"
     return text.strip(), shown

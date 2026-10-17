@@ -1,5 +1,6 @@
 """Бот (aiogram 3). Личка — только владелец; группы — только из CHAT_IDS."""
 
+import html
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -25,7 +26,7 @@ from .sources.moodle import save_cookie
 log = logging.getLogger(__name__)
 
 MAX_BUTTONS = 50
-HELP = (
+HELP = html.escape(
     "Я собираю задания из учебного чата и портала и каждый вечер присылаю сводку.\n\n"
     "Перешли мне сообщение из группы (или просто напиши текст) — достану из него задания.\n\n"
     "/digest — сводка сейчас\n"
@@ -132,7 +133,7 @@ def build_group_router(notifier: Notifier, processor: ChatProcessor) -> Router:
         if ev.new_chat_member.status in ("member", "administrator") and ev.chat.id not in notifier.s.chat_ids:
             # Чужая группа не тратит LLM, пока ты сам её не разрешишь
             await notifier.say(
-                f"Меня добавили в группу «{ev.chat.title}». Чтобы читать её, допиши в .env: "
+                f"Меня добавили в группу «{html.escape(ev.chat.title or '')}». Чтобы читать её, допиши в .env: "
                 f"<code>CHAT_IDS=[{ev.chat.id}]</code> и перезапусти бота."
             )
 
