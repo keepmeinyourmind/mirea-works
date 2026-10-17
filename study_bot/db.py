@@ -83,6 +83,13 @@ class DB:
         self.conn.commit()
         return closed
 
+    def subjects(self, source: str = "portal") -> list[str]:
+        """Названия предметов (с портала) — словарь для разбора правилами."""
+        rows = self.conn.execute(
+            "SELECT DISTINCT subject FROM tasks WHERE source = ? AND subject IS NOT NULL", (source,)
+        ).fetchall()
+        return [r["subject"] for r in rows]
+
     def list_open(self) -> list[Task]:
         rows = self.conn.execute(
             "SELECT * FROM tasks WHERE done = 0 ORDER BY deadline IS NULL, deadline, id"

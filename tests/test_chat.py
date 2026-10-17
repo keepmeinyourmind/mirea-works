@@ -96,3 +96,17 @@ async def test_same_text_forwarded_twice_is_not_duplicated():
 def test_message_link_only_for_supergroups():
     assert message_link(-1001234567890, 5) == "https://t.me/c/1234567890/5"
     assert message_link(12345, 5) is None
+
+
+async def test_rules_extractor_end_to_end_uses_portal_subjects():
+    from study_bot.extract.rules import RulesExtractor
+    from study_bot.models import Task
+
+    db = DB(":memory:")
+    # Курс уже пришёл с портала — его название становится словарём предметов
+    db.upsert(Task(source="portal", source_id="1", title="КР 1", subject="Фронтенд и бэкенд разработка"))
+    proc = ChatProcessor(db, RulesExtractor(MSK, db.subjects))
+    fwd = Message(message_id=9, date=SENT, chat=ME, from_user=ANYA, text="К пятнице сдать лабу 4 по фронтенду")
+    [t] = await proc.process(from_message(fwd, explicit=True))
+    assert t.subject == "Фронтенд и бэкенд разработка"
+    assert t.deadline.date().isoformat() == "2026-10-23"  # 17.10 — суббота → пятница 23.10

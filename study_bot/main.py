@@ -15,6 +15,7 @@ from .bot import COOKIE_HELP, Notifier, build_group_router, build_router
 from .config import Settings
 from .db import DB
 from .extract.llm import Extractor
+from .extract.rules import RulesExtractor
 from .sources.portal import NullPortal, PortalAuthError, PortalSource, make_portal
 from .sources.chat import ChatProcessor
 
@@ -57,7 +58,12 @@ async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     s = Settings()
     db = DB(s.db_path)
-    extractor = Extractor(s.anthropic_api_key, s.llm_model, s.zone)
+    if s.anthropic_api_key:
+        extractor = Extractor(s.anthropic_api_key, s.llm_model, s.zone)
+        log.info("Разбор сообщений: Claude (%s)", s.llm_model)
+    else:
+        extractor = RulesExtractor(s.zone, db.subjects, s.subject_aliases)
+        log.info("Разбор сообщений: правила (бесплатно, без LLM)")
     notifier = Notifier(s, db)
 
     processor = ChatProcessor(db, extractor, frozenset(s.trusted_senders))

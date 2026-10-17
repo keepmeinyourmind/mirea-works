@@ -11,7 +11,7 @@ from datetime import datetime
 import anthropic
 
 from ..db import DB
-from ..extract.llm import Extractor
+from ..extract import TaskExtractor
 from ..extract.prefilter import is_candidate
 from ..models import Task
 
@@ -44,7 +44,7 @@ def text_key(text: str) -> str:
 
 
 class ChatProcessor:
-    def __init__(self, db: DB, extractor: Extractor, trusted: frozenset[int] = frozenset()):
+    def __init__(self, db: DB, extractor: TaskExtractor, trusted: frozenset[int] = frozenset()):
         self.db = db
         self.extractor = extractor
         self.trusted = trusted

@@ -20,8 +20,11 @@ class Settings(BaseSettings):
     # Авторы, чьим сообщениям в группе доверяем больше (староста, преподаватель)
     trusted_senders: list[int] = []
 
-    anthropic_api_key: str
+    # Пусто — бесплатный разбор правилами; с ключом — точнее, через Claude
+    anthropic_api_key: str = ""
     llm_model: str = "claude-haiku-5-5"
+    # Свои сокращения предметов: SUBJECT_ALIASES={"ос": "Операционные системы", "бд": "Базы данных"}
+    subject_aliases: dict[str, str] = {}
 
     tz: str = "Europe/Moscow"
     digest_hour: int = 20

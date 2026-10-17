@@ -15,7 +15,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from .config import Settings
 from .db import DB
 from .digest import build_digest, format_line
-from .extract.llm import Extractor
+from .extract import TaskExtractor
 from .models import Task
 from .sources.chat import ChatProcessor, IncomingMessage, message_link, text_key
 from .sources.moodle import save_cookie
@@ -121,7 +121,7 @@ def build_group_router(notifier: Notifier, processor: ChatProcessor) -> Router:
 
 
 def build_router(
-    notifier: Notifier, db: DB, extractor: Extractor, processor: ChatProcessor,
+    notifier: Notifier, db: DB, extractor: TaskExtractor, processor: ChatProcessor,
     poll_portal: Callable[..., Awaitable[int | None]],
 ) -> Router:
     router = Router()
@@ -194,7 +194,7 @@ def build_router(
             return
         new = await processor.process(msg)
         if new is None:
-            await m.answer("LLM сейчас недоступна — пришли ещё раз позже или добавь через /add.")
+            await m.answer("Разбор сейчас недоступен — пришли ещё раз позже или добавь через /add.")
         elif new:
             await notifier.notify_new(new)
         else:
