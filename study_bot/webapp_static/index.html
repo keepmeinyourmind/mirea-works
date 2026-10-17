@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StudyBot</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<main id="list-screen" class="screen">
+  <div class="chips" id="chips"></div>
+  <div class="sum" id="sum" hidden></div>
+  <div id="list"></div>
+  <div class="empty" id="empty" hidden>
+    <i class="ti ti-confetti"></i>
+    <b>Открытых заданий нет</b>
+    <span>Перешли боту сообщение с заданием или добавь его кнопкой ниже.</span>
+  </div>
+  <div class="error" id="error" hidden></div>
+  <div class="fab-wrap"><button class="main" id="new-btn"><i class="ti ti-plus"></i> Новое задание</button></div>
+</main>
+
+<main id="edit-screen" class="screen" hidden>
+  <div class="dev-bar" id="dev-back" hidden><button class="link" id="back-btn"><i class="ti ti-arrow-left"></i> Назад</button></div>
+  <h1 id="edit-title">Задание</h1>
+  <form id="form" novalidate>
+    <div class="fld"><label for="f-title">Что сделать</label>
+      <input id="f-title" autocomplete="off" placeholder="Лаба 4: сдать отчёт" maxlength="300"></div>
+    <div class="fld"><label for="f-subject">Предмет</label>
+      <input id="f-subject" list="subjects" autocomplete="off" placeholder="Без предмета"><datalist id="subjects"></datalist></div>
+    <div class="row2">
+      <div class="fld"><label for="f-date">Срок</label><input id="f-date" type="date"></div>
+      <div class="fld"><label for="f-time">Время</label><input id="f-time" type="time" value="23:59"></div>
+    </div>
+    <div class="fld"><label for="f-points">Баллы</label>
+      <div class="inline"><input id="f-points" type="number" inputmode="decimal" min="0" step="0.5" placeholder="Не указано"><span id="points-hint" class="hint"></span></div></div>
+    <div class="fld" id="url-field"><label for="f-url">Ссылка</label>
+      <input id="f-url" type="url" inputmode="url" placeholder="https://online-edu.mirea.ru/mod/assign/view.php?id=…"></div>
+    <div class="form-error" id="form-error" role="alert"></div>
+  </form>
+  <div id="status-box"></div>
+  <a id="open-link" class="openlink" target="_blank" rel="noopener" hidden></a>
+  <div class="actions">
+    <button class="main" id="save-btn" hidden>Сохранить</button>
+    <button class="danger-link" id="delete-btn"><i class="ti ti-trash"></i> Удалить задание</button>
+  </div>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -2,6 +2,11 @@ services:
   bot:
     build: .
     env_file: .env
+    environment:
+      # В контейнере слушаем все интерфейсы; наружу порт отдаём только на localhost — перед ним встанет Caddy с https
+      WEBAPP_HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8080:8080"
     volumes:
-      - ./data:/app/data   # tasks.sqlite3 и userbot.session
+      - ./data:/app/data   # tasks.sqlite3 и cookie портала
     restart: unless-stopped

@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     digest_minute: int = 0
     # Опрос портала заодно не даёт истечь сессии Moodle — не делать реже ~раза в час
     portal_poll_minutes: int = 30
+    # Статус и баллы со страниц заданий: как часто перепроверять и сколько страниц за один опрос
+    portal_status_hours: int = 3
+    portal_check_batch: int = 15
     # Сразу писать о новом задании из группы, не дожидаясь вечерней сводки
     notify_new: bool = True
 
@@ -39,6 +42,13 @@ class Settings(BaseSettings):
     portal_url: str = "https://online-edu.mirea.ru"
     # Насколько назад смотреть просроченные задания портала
     portal_lookback_days: int = 60
+
+    # Mini App: публичный https-адрес (для кнопок «Открыть»), где слушать HTTP внутри
+    webapp_url: str = ""
+    webapp_host: str = "127.0.0.1"
+    webapp_port: int = 8080
+    # Только для разработки в обычном браузере: API без проверки подписи Telegram
+    webapp_dev_no_auth: bool = False
 
     data_dir: Path = Path("data")
 

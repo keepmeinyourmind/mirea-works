@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StudyBot макет</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<style>
+:root{
+  --bg:#efeff4; --card:#ffffff; --sub:#f4f4f7; --text:#111; --hint:#8e8e93; --muted:#a8a8ad;
+  --line:rgba(0,0,0,.09); --accent:#2481cc; --on-accent:#fff; --danger:#d93a3a; --ok:#31a24c; --sel:#e8f1fb;
+  --pts:#d3f2da; --on-pts:#1d6b31;
+  --warn:#a5620a; --warn-bg:#fdf0d8; --info:#1f63a8; --info-bg:#e3effc;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1621; --card:#17212b; --sub:#1e2c3a; --text:#f5f5f5; --hint:#7f91a4; --muted:#5f7184;
+    --line:rgba(255,255,255,.08); --accent:#5288c1; --on-accent:#fff; --danger:#ec6b6b; --ok:#4fbf67; --sel:#20354a;
+    --pts:#1f4229; --on-pts:#8fdca3;
+    --warn:#f0bb63; --warn-bg:#47330f; --info:#9cc6f0; --info-bg:#1d3a57;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:24px 16px}
+.wrap{max-width:760px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.cap{font-size:13px;color:var(--hint);margin:0 0 8px 4px}
+.ph{background:var(--card);border-radius:22px;overflow:hidden;display:flex;flex-direction:column;min-height:620px;border:1px solid var(--line)}
+.top{padding:12px 14px 8px;display:flex;align-items:center;gap:8px}
+.top .t{flex:1;text-align:center}
+.top .t b{display:block;font-weight:600;font-size:15px}
+.top .t small{color:var(--hint);font-size:12px}
+.chips{padding:0 12px 8px;display:flex;gap:6px;flex-wrap:wrap}
+.pill{font-size:12px;padding:3px 8px;border-radius:7px;white-space:nowrap;cursor:pointer}
+.sec{font-size:13px;color:var(--hint);padding:14px 14px 6px;display:flex;justify-content:space-between}
+.row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid var(--line);cursor:pointer}
+.row:hover{background:var(--sub)}
+.row.sel{background:var(--sel)}
+.chk{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--muted);flex:none;display:flex;align-items:center;justify-content:center;font-size:14px;color:transparent;background:none;padding:0;cursor:pointer}
+.chk.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{display:flex;gap:6px;align-items:center;margin-top:3px;flex-wrap:wrap;font-size:12px;color:var(--hint)}
+.foot{padding:10px 12px;border-top:1px solid var(--line)}
+.main{width:100%;height:44px;border:0;border-radius:10px;background:var(--accent);color:var(--on-accent);font:600 15px inherit;font-family:inherit;cursor:pointer}
+.fld{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.fld label{font-size:13px;color:var(--hint)}
+input,select{height:40px;border-radius:10px;border:1px solid var(--line);background:var(--sub);color:var(--text);padding:0 10px;font:15px inherit;font-family:inherit;width:100%}
+.note{font-size:13px;color:var(--hint);background:var(--sub);border-radius:10px;padding:9px 11px;display:flex;gap:7px}
+.pts{font-size:12px;font-weight:600;padding:2px 8px;border-radius:7px;background:var(--pts);color:var(--on-pts);white-space:nowrap;font-variant-numeric:tabular-nums}
+.sum{margin:0 12px 6px;padding:10px 12px;border-radius:12px;background:var(--sub);display:flex;align-items:center;justify-content:space-between;font-size:13px;color:var(--hint)}
+.sum .pts{font-size:15px;padding:3px 10px}
+.lnk{color:var(--accent);font-size:17px;display:flex;align-items:center;padding:4px;border-radius:8px;text-decoration:none}
+.lnk:hover{background:var(--sub)}
+.openlink{display:flex;align-items:center;gap:8px;margin-top:12px;padding:11px 12px;border-radius:10px;background:var(--sub);color:var(--accent);text-decoration:none;font-size:14px}
+.st{font-size:11px;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.st-warn{background:var(--warn-bg);color:var(--warn)}.st-info{background:var(--info-bg);color:var(--info)}.st-ok{background:var(--pts);color:var(--on-pts)}
+.st-warn-t{color:var(--warn)}.st-info-t{color:var(--info)}.st-ok-t{color:var(--on-pts)}
+.stbox{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:12px;display:flex;flex-direction:column;gap:7px;font-size:13px}
+.sthead{display:flex;justify-content:space-between;color:var(--hint);font-size:12px}
+.strow{display:flex;justify-content:space-between;gap:10px;color:var(--hint)}.strow b{font-weight:500;color:var(--text);text-align:right}
+.icon-btn{background:none;border:0;color:var(--hint);font-size:20px;cursor:pointer;padding:2px}
+.c-blue{background:#e3effc;color:#1a5fa8}.c-teal{background:#dff4ec;color:#0f6e56}.c-purple{background:#ecebfd;color:#4a41b0}.c-coral{background:#fbe9e3;color:#99401f}.c-pink{background:#fbe8ef;color:#993556}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .c-blue{background:#1d3a57;color:#a9cdf2}:root:not([data-theme="light"]) .c-teal{background:#123f35;color:#93dcc2}:root:not([data-theme="light"]) .c-purple{background:#2e2a5c;color:#c3beef}:root:not([data-theme="light"]) .c-coral{background:#4a2417;color:#f1b39d}:root:not([data-theme="light"]) .c-pink{background:#4a1d2e;color:#efb0c6}}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div>
+  <p class="cap">Главный экран — изменения сохраняются в этом браузере</p>
+  <div class="ph">
+   <div class="top"><i class="ti ti-x icon-btn"></i><div class="t"><b>StudyBot</b><small>мини-приложение</small></div><i class="ti ti-dots icon-btn"></i></div>
+   <div class="chips" id="chips"></div>
+   <div class="sum" id="sum"></div>
+   <div id="list" style="flex:1"></div>
+   <div class="foot"><button class="main" onclick="openNew()"><i class="ti ti-plus"></i> Новое задание</button></div>
+  </div>
+ </div>
+ <div>
+  <p class="cap">Карточка задания</p>
+  <div class="ph" id="edit"></div>
+ </div>
+</div>
+<script>
+const SUBJ={"Фронтенд и бэкенд":"c-blue","Базы данных":"c-teal","Проектная деятельность":"c-purple","СИИ и большие данные":"c-coral","ТИП":"c-pink"};
+const KEY="studybot-mockup-v4";
+const SEED=[
+{id:1,t:"Мини-хакатон №1",s:"Проектная деятельность",date:"2026-10-10",time:"23:58",src:"СДО",p:5,url:"https://online-edu.mirea.ru/mod/assign/view.php?id=949324",st:{k:"none"},done:false},
+{id:2,t:"Контрольная работа №1",s:"ТИП",date:"2026-10-12",time:"23:59",src:"СДО",p:8,url:"https://online-edu.mirea.ru/mod/assign/view.php?id=952530",st:{k:"none"},done:false},
+{id:3,t:"Контрольная работа 2",s:"Фронтенд и бэкенд",date:"2026-10-18",time:"23:59",src:"СДО",p:5,url:"https://online-edu.mirea.ru/mod/assign/view.php?id=930710",st:{k:"draft"},done:false},
+{id:4,t:"Лаба 3: сдать отчёт",s:"Базы данных",date:"2026-10-23",time:"23:59",src:"чат",p:10,url:"https://t.me/c/1234567890/512",done:false},
+{id:5,t:"Контрольный тест № 1",s:"СИИ и большие данные",date:"2026-10-25",time:"22:00",src:"СДО",p:10,url:"https://online-edu.mirea.ru/mod/quiz/view.php?id=895945",st:{k:"quiz",used:1,of:3,best:7},done:false},
+{id:6,t:"Контрольная работа 3",s:"Фронтенд и бэкенд",date:"2026-10-25",time:"23:59",src:"СДО",p:7,url:"https://online-edu.mirea.ru/mod/assign/view.php?id=942512",st:{k:"none"},done:false},
+{id:7,t:"Реферат по истории",s:"",date:"",time:"23:59",src:"вручную",p:null,url:"",done:false},
+{id:8,t:"Практическая работа 5",s:"Базы данных",date:"2026-10-16",time:"23:59",src:"СДО",p:6,url:"https://online-edu.mirea.ru/mod/assign/view.php?id=950001",st:{k:"submitted"},done:true,auto:true},
+{id:9,t:"Практическая работа 4",s:"Фронтенд и бэкенд",date:"2026-10-11",time:"23:59",src:"СДО",p:5,url:"https://online-edu.mirea.ru/mod/assign/view.php?id=950002",st:{k:"graded",got:4},done:true,auto:true}];
+function load(){try{const v=JSON.parse(localStorage.getItem(KEY));if(Array.isArray(v))return v}catch(e){}return structuredClone(SEED)}
+function persist(){try{localStorage.setItem(KEY,JSON.stringify(tasks))}catch(e){}}
+let tasks=load(),sel=tasks[0]?.id??null,filter=null,flash="";
+const WD=["вс","пн","вт","ср","чт","пт","сб"],SECS=["Просрочено","Сегодня","Завтра","На неделе","Позже","Без срока","Сделано"];
+const dl=x=>x.date?new Date(`${x.date}T${x.time||"23:59"}`):null;
+function secOf(x){if(x.done)return"Сделано";const d=dl(x);if(!d)return"Без срока";const now=new Date();if(d<now)return"Просрочено";
+ const t0=new Date(now.getFullYear(),now.getMonth(),now.getDate()),days=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-t0)/864e5);
+ return days===0?"Сегодня":days===1?"Завтра":days<=7?"На неделе":"Позже"}
+function label(x){const d=dl(x);if(!d)return"без срока";const dd=String(d.getDate()).padStart(2,"0"),mm=String(d.getMonth()+1).padStart(2,"0");
+ return `до ${dd}.${mm} (${WD[d.getDay()]})${x.time&&x.time!=="23:59"?", "+x.time:""}`}
+const esc=v=>String(v??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pill=s=>s?`<span class="pill ${SUBJ[s]||"c-blue"}">${esc(s)}</span>`:"";
+const plural=n=>{n=Math.floor(n);const a=n%10,b=n%100;return a===1&&b!==11?"балл":a>=2&&a<=4&&(b<12||b>14)?"балла":"баллов"};
+const fmtP=n=>Number.isInteger(n)?n:String(n).replace(".",",");
+const LINK={"СДО":["ti-school","Открыть в СДО"],"чат":["ti-message","Открыть сообщение в группе"],"вручную":["ti-link","Открыть ссылку"]};
+const okUrl=u=>/^https?:\/\/\S+$/i.test(u||"");
+const linkBtn=x=>okUrl(x.url)?`<a href="${esc(x.url)}" target="_blank" rel="noopener" class="lnk" aria-label="${LINK[x.src][1]}" title="${LINK[x.src][1]}" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a>`:"";
+const ST={
+ none:x=>null,
+ draft:x=>({cls:"st-warn",short:"Черновик, не отправлено",ans:"Черновик (не отправлен)",grade:"Не оценено"}),
+ submitted:x=>({cls:"st-info",short:"Ждёт оценки",ans:"Отправлено для оценивания",grade:"Не оценено"}),
+ graded:x=>({cls:"st-ok",short:`Оценено: ${fmtP(x.st.got)} из ${fmtP(x.p)}`,ans:"Отправлено для оценивания",grade:`Оценено: ${fmtP(x.st.got)} из ${fmtP(x.p)}`}),
+ quiz:x=>({cls:"st-info",short:`Попытка ${x.st.used} из ${x.st.of} · ${fmtP(x.st.best)} из ${fmtP(x.p)}`,ans:`Использовано попыток: ${x.st.used} из ${x.st.of}`,grade:`Лучший результат: ${fmtP(x.st.best)} из ${fmtP(x.p)}`}),
+};
+const stOf=x=>x.src==="СДО"&&x.st?ST[x.st.k](x):null;
+const stTag=x=>{const v=stOf(x);return v?`<span class="st ${v.cls}">${v.short}</span>`:""};
+const ptsTag=x=>x.p?`<span class="pts" style="${x.done?"opacity:.4":""}">+${fmtP(x.p)} б.</span>`:"";
+function render(){
+ const vis=tasks.filter(x=>!filter||x.s===filter);
+ const wk=vis.filter(x=>!x.done&&["Сегодня","Завтра","На неделе"].includes(secOf(x))).reduce((a,x)=>a+(x.p||0),0);
+ document.getElementById("sum").innerHTML=`<span>Можно набрать на этой неделе</span><span class="pts">${fmtP(wk)} ${plural(wk)}</span>`;
+ const subs=[...new Set(tasks.map(x=>x.s).filter(Boolean))];
+ if(filter&&!subs.includes(filter))filter=null;
+ document.getElementById("chips").innerHTML=`<span class="pill" style="${filter?"border:1px solid var(--line)":"background:var(--accent);color:var(--on-accent)"}" onclick="setF(null)">Все</span>`+subs.map(s=>`<span style="${filter&&filter!==s?"opacity:.4":""}" onclick='setF(${JSON.stringify(s)})'>${pill(s)}</span>`).join("");
+ let h="";
+ for(const sc of SECS){
+  const items=vis.filter(x=>secOf(x)===sc).sort((a,b)=>(dl(a)||0)-(dl(b)||0)); if(!items.length) continue;
+  const red=sc==="Просрочено";
+  h+=`<div class="sec"><span style="${red?"color:var(--danger)":""}">${sc}</span><span>${items.filter(i=>!i.done).length}</span></div>`;
+  for(const x of items) h+=`<div class="row ${x.id===sel?"sel":""}" onclick="pick(${x.id})">
+   <button class="chk ${x.done?"on":""}" aria-label="Сделано" onclick="event.stopPropagation();tog(${x.id})"><i class="ti ti-check"></i></button>
+   <div style="flex:1;min-width:0"><div class="title" style="${x.done?"text-decoration:line-through;color:var(--muted)":""}">${esc(x.t)}</div>
+   <div class="meta">${pill(x.s)}<span style="${red&&!x.done?"color:var(--danger)":""}">${label(x)} · ${x.src}</span>${stTag(x)}</div></div>
+   ${linkBtn(x)}${ptsTag(x)}<i class="ti ti-chevron-right" style="color:var(--muted)"></i></div>`;
+ }
+ h+=`<div style="padding:14px;text-align:center"><button class="icon-btn" style="font-size:13px" onclick="resetAll()">Сбросить к примерам</button></div>`;
+ document.getElementById("list").innerHTML=h; editView();
+}
+function editView(){
+ const x=tasks.find(t=>t.id===sel)||{t:"",s:"",date:"",time:"23:59",src:"вручную",p:null,isNew:true};
+ const subjOpts=[...new Set(["",...Object.keys(SUBJ),...tasks.map(t=>t.s)])];
+ document.getElementById("edit").innerHTML=`
+ <div class="top" style="border-bottom:1px solid var(--line);padding-bottom:12px"><i class="ti ti-arrow-left icon-btn"></i>
+  <div class="t" style="text-align:left"><b>${x.isNew?"Новое задание":"Задание"}</b></div>
+  ${x.isNew?"":`<button class="icon-btn" style="color:var(--danger)" aria-label="Удалить" onclick="del(${x.id})"><i class="ti ti-trash"></i></button>`}</div>
+ <div style="padding:16px 14px;flex:1">
+  <div class="fld"><label for="f-t">Что сделать</label><input id="f-t" value="${esc(x.t)}" placeholder="Лаба 4: сдать отчёт" oninput="document.getElementById('f-err').textContent=''"><span id="f-err" style="font-size:13px;color:var(--danger)"></span></div>
+  <div class="fld"><label for="f-s">Предмет</label><select id="f-s">${subjOpts.map(s=>`<option value="${esc(s)}" ${s===x.s?"selected":""}>${esc(s||"Без предмета")}</option>`).join("")}</select></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+   <div class="fld"><label for="f-d">Срок</label><input id="f-d" type="date" value="${x.date}"></div>
+   <div class="fld"><label for="f-tm">Время</label><input id="f-tm" type="time" value="${x.time||"23:59"}"></div></div>
+  <div class="fld"><label for="f-p">Баллы</label><div style="display:flex;gap:10px;align-items:center"><input id="f-p" type="number" min="0" step="0.5" value="${x.p??""}" placeholder="Не указано" style="width:120px">${x.p?`<span class="pts" style="font-size:14px">+${fmtP(x.p)} ${plural(x.p)}</span>`:""}</div>
+   ${x.src==="СДО"&&x.p?`<span style="font-size:12px;color:var(--hint)">Максимальная оценка со страницы задания в СДО</span>`:""}</div>
+  ${x.src==="СДО"?statusBlock(x):""}
+  ${x.src==="СДО"?`<div class="note"><i class="ti ti-info-circle"></i><span>Задание из СДО. Если поменяешь срок, обновления с портала его больше не перезапишут.</span></div>`:""}
+  ${x.src==="вручную"?`<div class="fld"><label for="f-u">Ссылка</label><input id="f-u" type="url" inputmode="url" value="${esc(x.url)}" placeholder="https://online-edu.mirea.ru/mod/assign/view.php?id=…" oninput="document.getElementById('f-uerr').textContent=''"><span id="f-uerr" style="font-size:13px;color:var(--danger)"></span></div>`:""}
+  ${okUrl(x.url)?`<a class="openlink" href="${esc(x.url)}" target="_blank" rel="noopener"><i class="ti ${LINK[x.src][0]}"></i><span>${LINK[x.src][1]}</span><i class="ti ti-external-link" style="margin-left:auto"></i></a>`:""}
+  ${flash?`<div class="note" style="margin-top:12px;color:var(--ok)"><i class="ti ti-check"></i><span>${flash}</span></div>`:""}
+ </div>
+ <div class="foot"><button class="main" onclick="save()">Сохранить</button></div>`;
+ flash="";
+}
+function statusBlock(x){
+ const v=stOf(x)||{ans:"Ответы на задание еще не представлены",grade:"Не оценено",cls:""};
+ return `<div class="stbox"><div class="sthead"><span>Статус в СДО</span><span style="color:var(--muted)">проверено 12 мин назад</span></div>
+  <div class="strow"><span>Ответ</span><b class="${v.cls?v.cls+"-t":""}">${v.ans}</b></div>
+  <div class="strow"><span>Оценивание</span><b class="${x.st?.k==="graded"?"st-ok-t":""}">${v.grade}</b></div>
+  ${x.auto?`<div class="strow" style="color:var(--ok)"><span><i class="ti ti-circle-check"></i> Отмечено автоматически: задание сдано в СДО</span></div>`:""}
+  ${x.st?.k==="draft"?`<div class="strow" style="color:var(--warn)"><span><i class="ti ti-alert-triangle"></i> Файл загружен, но не отправлен. Нажми «Отправить на проверку» в СДО</span></div>`:""}
+ </div>`}
+function save(){
+ const t=document.getElementById("f-t").value.trim();
+ if(!t){document.getElementById("f-err").textContent="Напиши, что нужно сделать";return}
+ const pRaw=document.getElementById("f-p").value.replace(",",".");
+ const uEl=document.getElementById("f-u"),url=uEl?uEl.value.trim():undefined;
+ if(url&&!okUrl(url)){document.getElementById("f-uerr").textContent="Ссылка должна начинаться с https://";return}
+ const data={t,s:document.getElementById("f-s").value,date:document.getElementById("f-d").value,time:document.getElementById("f-tm").value||"23:59",p:pRaw===""?null:Math.max(0,parseFloat(pRaw))};
+ if(url!==undefined)data.url=url;
+ const x=tasks.find(t=>t.id===sel);
+ if(x){Object.assign(x,data);flash="Сохранено"}
+ else{const id=Math.max(0,...tasks.map(t=>t.id))+1;tasks.push({id,src:"вручную",url:"",done:false,...data});sel=id;flash="Задание добавлено"}
+ persist();render();
+}
+function pick(id){sel=id;render()}
+function tog(id){const x=tasks.find(t=>t.id===id);x.done=!x.done;persist();render()}
+function del(id){tasks=tasks.filter(t=>t.id!==id);sel=tasks[0]?.id??null;persist();render()}
+function openNew(){sel=null;render();document.getElementById("f-t").focus()}
+function setF(s){filter=s;render()}
+function resetAll(){tasks=structuredClone(SEED);sel=tasks[0].id;filter=null;persist();render()}
+render();
+</script>
+</body>
+</html>

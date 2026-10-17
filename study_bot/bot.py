@@ -9,7 +9,9 @@ from aiogram import Bot, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatType
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, ChatMemberUpdated, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery, ChatMemberUpdated, InlineKeyboardMarkup, MenuButtonWebApp, Message, WebAppInfo,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import Settings
@@ -39,13 +41,26 @@ COOKIE_HELP = (
 )
 
 
-def done_keyboard(tasks: list[Task]) -> InlineKeyboardMarkup | None:
-    if not tasks:
+def app_url(base: str, task_id: int | None = None) -> str | None:
+    """Адрес Mini App (только https — иначе Telegram не примет кнопку). task — сразу в карточку."""
+    if not base.startswith("https://"):
         return None
+    base = base.rstrip("/") + "/"
+    return f"{base}?task={task_id}" if task_id else base
+
+
+def done_keyboard(tasks: list[Task], webapp: str = "", open_task: int | None = None) -> InlineKeyboardMarkup | None:
     kb = InlineKeyboardBuilder()
     for n, t in enumerate(tasks[:MAX_BUTTONS], start=1):
         kb.button(text=f"✅ {n}", callback_data=f"done:{t.id}")
-    kb.adjust(5)
+    n = min(len(tasks), MAX_BUTTONS)
+    sizes = [5] * (n // 5) + ([n % 5] if n % 5 else [])  # ряды по 5 галочек, «Открыть» — отдельным рядом
+    if url := app_url(webapp, open_task):
+        kb.button(text="✏️ Открыть" if open_task else "📋 Открыть приложение", web_app=WebAppInfo(url=url))
+        sizes.append(1)
+    if not sizes:
+        return None
+    kb.adjust(*sizes)
     return kb.as_markup()
 
 
@@ -60,15 +75,26 @@ class Notifier:
 
     async def send_digest(self, full: bool = False) -> None:
         text, shown = build_digest(self.db.list_open(), self.now(), self.s.zone, full=full)
-        await self.bot.send_message(self.s.owner_id, text, reply_markup=done_keyboard(shown))
+        await self.bot.send_message(self.s.owner_id, text, reply_markup=done_keyboard(shown, self.s.webapp_url))
 
     async def notify_new(self, tasks: list[Task]) -> None:
         lines = [format_line(n, t, self.s.zone) for n, t in enumerate(tasks, start=1)]
         title = "🆕 Новое задание" if len(tasks) == 1 else "🆕 Новые задания"
-        await self.bot.send_message(self.s.owner_id, f"<b>{title}</b>\n" + "\n".join(lines), reply_markup=done_keyboard(tasks))
+        one = tasks[0].id if len(tasks) == 1 else None
+        await self.bot.send_message(
+            self.s.owner_id, f"<b>{title}</b>\n" + "\n".join(lines),
+            reply_markup=done_keyboard(tasks, self.s.webapp_url, open_task=one),
+        )
 
     async def say(self, text: str) -> None:
         await self.bot.send_message(self.s.owner_id, text)
+
+    async def setup_menu_button(self) -> None:
+        """Кнопка «Задания» слева от поля ввода в чате с ботом — открывает Mini App."""
+        if url := app_url(self.s.webapp_url):
+            await self.bot.set_chat_menu_button(
+                chat_id=self.s.owner_id, menu_button=MenuButtonWebApp(text="Задания", web_app=WebAppInfo(url=url))
+            )
 
 
 def from_message(m: Message, explicit: bool) -> IncomingMessage:

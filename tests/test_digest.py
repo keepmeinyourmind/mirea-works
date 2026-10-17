@@ -62,3 +62,11 @@ def test_html_is_escaped():
 def test_deadline_format_hides_default_time():
     assert format_deadline(eod(1), MSK) == "18.10 (вс)"
     assert format_deadline(datetime(2026, 10, 20, 10, 30, tzinfo=MSK), MSK) == "20.10 (вт) 10:30"
+
+
+def test_points_and_draft_in_digest_line():
+    t = Task(source="portal", source_id="1", title="КР 3", deadline=eod(2), points=7, status="draft")
+    text, _ = build_digest([t], NOW, MSK)
+    assert "+7 б." in text and "черновик не отправлен" in text
+    t.points = 4.5
+    assert "+4,5 б." in build_digest([t], NOW, MSK)[0]

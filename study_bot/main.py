@@ -18,6 +18,7 @@ from .extract.llm import Extractor
 from .extract.rules import RulesExtractor
 from .sources.portal import NullPortal, PortalAuthError, PortalSource, make_portal
 from .sources.chat import ChatProcessor
+from .webapp import start_webapp
 
 log = logging.getLogger("study_bot")
 
@@ -43,15 +44,38 @@ class PortalPoller:
             log.exception("Портал: ошибка опроса")
             return None
         self.auth_warned = False
-        new = [t for t in tasks if self.db.upsert(t)]
+        new_ids = [t.source_id for t in tasks if self.db.upsert(t)]
         if not isinstance(self.portal, NullPortal):
-            since = datetime.now(timezone.utc) - timedelta(days=self.notifier.s.portal_lookback_days)
-            closed = self.db.close_missing("portal", {t.source_id for t in tasks}, since)
+            now = datetime.now(timezone.utc)
+            closed = self.db.close_missing("portal", {t.source_id for t in tasks}, now - timedelta(days=self.notifier.s.portal_lookback_days))
             if closed:
                 log.info("Портал: %d заданий сдано — закрыл", len(closed))
+            await self.check_statuses(now)
+        new = [t for sid in new_ids if (t := self.db.get_by_source("portal", sid))]
         if new and self.notifier.s.notify_new:
             await self.notifier.notify_new(new)
         return len(tasks)
+
+    async def check_statuses(self, now: datetime) -> None:
+        """Баллы и статус со страниц заданий: новые — сразу, остальные — раз в PORTAL_STATUS_HOURS."""
+        s = self.notifier.s
+        due = self.db.portal_due_for_check(now - timedelta(hours=s.portal_status_hours), now - timedelta(days=14))
+        due = due[: s.portal_check_batch]  # не грузим СДО десятками страниц за раз
+        if not due or not hasattr(self.portal, "check"):
+            return
+        try:
+            statuses = await self.portal.check(due)
+        except PortalAuthError:
+            return  # о протухшей сессии уже сообщает основной опрос
+        except Exception:
+            log.exception("Портал: ошибка проверки статусов")
+            return
+        for task_id, st in statuses.items():
+            self.db.set_portal_status(
+                task_id, points=st.points, status=st.status, grade=st.grade,
+                attempts_used=st.attempts_used, attempts_total=st.attempts_total, checked_at=now,
+            )
+        log.info("Портал: обновил статус %d заданий", len(statuses))
 
 
 async def main() -> None:
@@ -78,7 +102,15 @@ async def main() -> None:
     scheduler.start()
     log.info("Сводка каждый день в %02d:%02d (%s)", s.digest_hour, s.digest_minute, s.tz)
 
-    await dp.start_polling(notifier.bot)
+    runner = await start_webapp(s, db)
+    try:
+        await notifier.setup_menu_button()
+    except Exception:
+        log.exception("Не смог поставить кнопку меню с приложением")
+    try:
+        await dp.start_polling(notifier.bot)
+    finally:
+        await runner.cleanup()
 
 
 if __name__ == "__main__":

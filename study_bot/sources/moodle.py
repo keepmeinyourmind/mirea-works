@@ -18,6 +18,7 @@ from pathlib import Path
 import httpx
 
 from ..models import Task
+from .moodle_pages import PortalStatus, parse_page, points_from_text
 from .portal import PortalAuthError
 
 PAGE = 50
@@ -40,7 +41,13 @@ def event_to_task(e: dict) -> Task:
         subject=clean_subject((e.get("course") or {}).get("fullname")),
         deadline=datetime.fromtimestamp(e["timesort"], tz=timezone.utc),
         url=e.get("url"),
+        # «Максимальный балл за тест — 10 баллов» часто пишут прямо в описании
+        points=points_from_text(_strip_html(e.get("description"))),
     )
+
+
+def _strip_html(html: str | None) -> str | None:
+    return re.sub(r"<[^>]+>", " ", html) if html else None
 
 
 def read_cookie(path: Path) -> str:
@@ -113,3 +120,21 @@ class MoodleSessionPortal:
                 if len(events) < PAGE:
                     return tasks
                 args = {**args, "aftereventid": data["lastid"]}
+
+    async def check(self, tasks: list[Task]) -> dict[int, PortalStatus]:
+        """Статус и баллы со страниц заданий. Один клиент на пачку — страницы грузим по очереди."""
+        cookie = read_cookie(self.cookie_file)
+        if not cookie:
+            raise PortalAuthError("cookie портала не задана")
+        result: dict[int, PortalStatus] = {}
+        async with self._client(cookie) as client:
+            for t in tasks:
+                if not t.url or not t.url.startswith(self.base):
+                    continue
+                r = await client.get(t.url.removeprefix(self.base))
+                if r.is_redirect:
+                    raise PortalAuthError("сессия портала истекла")
+                if r.status_code != 200:
+                    continue
+                result[t.id] = parse_page(t.url, r.text)
+        return result

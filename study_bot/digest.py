@@ -28,7 +28,15 @@ def format_line(n: int, t: Task, tz: ZoneInfo) -> str:
     parts.append(title)
     if t.deadline:
         parts.append(f"· до {format_deadline(t.deadline, tz)}")
+    if t.points:
+        parts.append(f"· <b>+{format_points(t.points)} б.</b>")
+    if t.status == "draft":
+        parts.append("· ⚠️ черновик не отправлен")
     return " ".join(parts)
+
+
+def format_points(p: float) -> str:
+    return str(int(p)) if float(p).is_integer() else str(p).replace(".", ",")
 
 
 def build_digest(tasks: list[Task], now: datetime, tz: ZoneInfo, full: bool = False) -> tuple[str, list[Task]]:
