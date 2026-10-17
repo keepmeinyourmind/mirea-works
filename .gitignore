@@ -1,0 +1,7 @@
+.env
+data/
+*.session
+*.session-journal
+.venv/
+__pycache__/
+.pytest_cache/

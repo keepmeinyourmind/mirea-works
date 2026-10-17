@@ -1,0 +1,7 @@
+services:
+  bot:
+    build: .
+    env_file: .env
+    volumes:
+      - ./data:/app/data   # tasks.sqlite3 и userbot.session
+    restart: unless-stopped
