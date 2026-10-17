@@ -1,10 +1,9 @@
 [project]
 name = "study-bot"
 version = "0.1.0"
-description = "Личный бот: собирает учебные задания из Telegram и портала вуза и присылает сводку"
+description = "Личный бот: собирает учебные задания из Telegram (пересылка/группа) и портала вуза и присылает сводку"
 requires-python = ">=3.12"
 dependencies = [
-    "telethon>=1.36",
     "aiogram>=3.13,<4",
     "apscheduler>=3.10,<4",
     "anthropic>=0.70",

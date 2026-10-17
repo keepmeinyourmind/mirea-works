@@ -1,4 +1,4 @@
-"""Бот-уведомлялка (aiogram 3). Отвечает только владельцу."""
+"""Бот (aiogram 3). Личка — только владелец; группы — только из CHAT_IDS."""
 
 import logging
 from collections.abc import Awaitable, Callable
@@ -7,8 +7,9 @@ from datetime import datetime
 import anthropic
 from aiogram import Bot, F, Router
 from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ChatType
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, ChatMemberUpdated, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .config import Settings
@@ -16,6 +17,7 @@ from .db import DB
 from .digest import build_digest, format_line
 from .extract.llm import Extractor
 from .models import Task
+from .sources.chat import ChatProcessor, IncomingMessage, message_link, text_key
 from .sources.moodle import save_cookie
 
 log = logging.getLogger(__name__)
@@ -23,6 +25,7 @@ log = logging.getLogger(__name__)
 MAX_BUTTONS = 50
 HELP = (
     "Я собираю задания из учебного чата и портала и каждый вечер присылаю сводку.\n\n"
+    "Перешли мне сообщение из группы (или просто напиши текст) — достану из него задания.\n\n"
     "/digest — сводка сейчас\n"
     "/tasks — все открытые задания\n"
     "/add <текст> — добавить задание вручную, например: /add до 30.10 реферат по истории\n"
@@ -68,12 +71,62 @@ class Notifier:
         await self.bot.send_message(self.s.owner_id, text)
 
 
+def from_message(m: Message, explicit: bool) -> IncomingMessage:
+    text = m.text or m.caption
+    if explicit:
+        # Пересланное/написанное в личку: дата оригинала, если это пересылка
+        origin = m.forward_origin
+        return IncomingMessage(
+            key=text_key(text or ""),
+            version="1",
+            text=text,
+            sent_at=origin.date if origin else m.date,
+            source="manual",
+            explicit=True,
+        )
+    return IncomingMessage(
+        key=f"{m.chat.id}:{m.message_id}",
+        version=(m.edit_date and str(m.edit_date)) or "0",
+        text=text,
+        sent_at=m.date,
+        sender_id=m.from_user.id if m.from_user else None,
+        chat_title=m.chat.title,
+        url=message_link(m.chat.id, m.message_id),
+    )
+
+
+def build_group_router(notifier: Notifier, processor: ChatProcessor) -> Router:
+    """Если бота добавили в учебную группу: читаем её сам, без твоего аккаунта."""
+    router = Router()
+    groups = F.chat.type.in_({ChatType.GROUP, ChatType.SUPERGROUP})
+    allowed = F.chat.id.in_(set(notifier.s.chat_ids))
+
+    @router.my_chat_member(groups)
+    async def added(ev: ChatMemberUpdated) -> None:
+        if ev.new_chat_member.status in ("member", "administrator") and ev.chat.id not in notifier.s.chat_ids:
+            # Чужая группа не тратит LLM, пока ты сам её не разрешишь
+            await notifier.say(
+                f"Меня добавили в группу «{ev.chat.title}». Чтобы читать её, допиши в .env: "
+                f"<code>CHAT_IDS=[{ev.chat.id}]</code> и перезапусти бота."
+            )
+
+    @router.message(groups, allowed)
+    @router.edited_message(groups, allowed)
+    async def group_message(m: Message) -> None:
+        new = await processor.process(from_message(m, explicit=False))
+        if new and notifier.s.notify_new:
+            await notifier.notify_new(new)
+
+    return router
+
+
 def build_router(
-    notifier: Notifier, db: DB, extractor: Extractor, poll_portal: Callable[..., Awaitable[int | None]]
+    notifier: Notifier, db: DB, extractor: Extractor, processor: ChatProcessor,
+    poll_portal: Callable[..., Awaitable[int | None]],
 ) -> Router:
     router = Router()
     owner = F.from_user.id == notifier.s.owner_id
-    router.message.filter(owner)
+    router.message.filter(owner, F.chat.type == ChatType.PRIVATE)
     router.callback_query.filter(owner)
 
     @router.message(Command("start", "help"))
@@ -128,6 +181,24 @@ def build_router(
             await m.answer("❌ С этой cookie портал не пускает. Проверь, что скопировал MoodleSession после входа.")
         else:
             await m.answer(f"✅ Портал подключён, заданий с дедлайнами: {count}. Сводка — /digest")
+
+    @router.message(F.text | F.caption)
+    async def forwarded_or_text(m: Message) -> None:
+        # Всё, что не команда: пересланное из группы или написанное тобой
+        if (m.text or "").startswith("/"):
+            await m.answer("Не знаю такой команды. /help")
+            return
+        msg = from_message(m, explicit=True)
+        if db.is_seen(msg.key, msg.version):
+            await m.answer("Это сообщение я уже разбирал.")
+            return
+        new = await processor.process(msg)
+        if new is None:
+            await m.answer("LLM сейчас недоступна — пришли ещё раз позже или добавь через /add.")
+        elif new:
+            await notifier.notify_new(new)
+        else:
+            await m.answer("Не нашёл здесь задания. Если оно есть — /add текст задания.")
 
     @router.callback_query(F.data.startswith("done:"))
     async def done(cb: CallbackQuery) -> None:

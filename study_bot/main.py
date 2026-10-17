@@ -1,4 +1,4 @@
-"""Точка входа: userbot + бот + планировщик в одном asyncio-процессе.
+"""Точка входа: бот + планировщик в одном asyncio-процессе.
 
     uv run python -m study_bot.main
 """
@@ -11,12 +11,12 @@ from aiogram import Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from .bot import COOKIE_HELP, Notifier, build_router
+from .bot import COOKIE_HELP, Notifier, build_group_router, build_router
 from .config import Settings
 from .db import DB
 from .extract.llm import Extractor
 from .sources.portal import NullPortal, PortalAuthError, PortalSource, make_portal
-from .sources.telegram import TelegramReader
+from .sources.chat import ChatProcessor
 
 log = logging.getLogger("study_bot")
 
@@ -60,12 +60,11 @@ async def main() -> None:
     extractor = Extractor(s.anthropic_api_key, s.llm_model, s.zone)
     notifier = Notifier(s, db)
 
+    processor = ChatProcessor(db, extractor, frozenset(s.trusted_senders))
     poller = PortalPoller(make_portal(s), db, notifier)
     dp = Dispatcher()
-    dp.include_router(build_router(notifier, db, extractor, poller.poll))
-
-    reader = TelegramReader(s, db, extractor, on_new=notifier.notify_new)
-    await reader.start()
+    dp.include_router(build_router(notifier, db, extractor, processor, poller.poll))
+    dp.include_router(build_group_router(notifier, processor))
 
     scheduler = AsyncIOScheduler(timezone=s.zone)
     scheduler.add_job(notifier.send_digest, CronTrigger(hour=s.digest_hour, minute=s.digest_minute, timezone=s.zone))
@@ -73,7 +72,7 @@ async def main() -> None:
     scheduler.start()
     log.info("Сводка каждый день в %02d:%02d (%s)", s.digest_hour, s.digest_minute, s.tz)
 
-    await asyncio.gather(dp.start_polling(notifier.bot), reader.run())
+    await dp.start_polling(notifier.bot)
 
 
 if __name__ == "__main__":

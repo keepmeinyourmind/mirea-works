@@ -10,18 +10,15 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Telegram userbot (my.telegram.org)
-    api_id: int
-    api_hash: str
-    # Супергруппы, которые читаем: CHAT_IDS=[-1001234567890]
-    chat_ids: list[int]
-    # Авторы, чьим сообщениям доверяем больше (староста, преподаватель): TRUSTED_SENDERS=[123,456]
-    trusted_senders: list[int] = []
-    backfill_days: int = 14
-
-    # Бот для уведомлений (@BotFather) и твой user id — бот отвечает только тебе
+    # Бот (@BotFather) и твой user id — в личке бот отвечает только тебе
     bot_token: str
     owner_id: int
+
+    # Группы, которые бот читает, если его туда добавят: CHAT_IDS=[-1001234567890]
+    # Пусто — бот работает только с тем, что ты ему пересылаешь
+    chat_ids: list[int] = []
+    # Авторы, чьим сообщениям в группе доверяем больше (староста, преподаватель)
+    trusted_senders: list[int] = []
 
     anthropic_api_key: str
     llm_model: str = "claude-haiku-5-5"
@@ -31,7 +28,7 @@ class Settings(BaseSettings):
     digest_minute: int = 0
     # Опрос портала заодно не даёт истечь сессии Moodle — не делать реже ~раза в час
     portal_poll_minutes: int = 30
-    # Сразу писать о новом задании из чата, не дожидаясь вечерней сводки
+    # Сразу писать о новом задании из группы, не дожидаясь вечерней сводки
     notify_new: bool = True
 
     # Портал: "moodle" (СДО МИРЭА) или "none"
@@ -54,8 +51,3 @@ class Settings(BaseSettings):
     def portal_cookie_path(self) -> Path:
         # Значение cookie MoodleSession; обновляется командой /cookie
         return self.data_dir / "moodle_session.txt"
-
-    @property
-    def session_path(self) -> Path:
-        # Telethon сам допишет .session
-        return self.data_dir / "userbot"
