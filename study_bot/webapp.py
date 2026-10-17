@@ -192,7 +192,13 @@ def build_app(settings: Settings, db: DB) -> web.Application:
     return app
 
 
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
 async def start_webapp(settings: Settings, db: DB) -> web.AppRunner:
+    if settings.webapp_dev_no_auth and settings.webapp_host not in LOCAL_HOSTS:
+        # Без проверки Telegram API открыт любому — допустимо только на своём компьютере
+        raise RuntimeError("WEBAPP_DEV_NO_AUTH=true разрешён только с WEBAPP_HOST=127.0.0.1")
     runner = web.AppRunner(build_app(settings, db))
     await runner.setup()
     await web.TCPSite(runner, settings.webapp_host, settings.webapp_port).start()

@@ -78,8 +78,35 @@ class PortalPoller:
         log.info("Портал: обновил статус %d заданий", len(statuses))
 
 
+def build_scheduler(s: Settings, notifier: Notifier, poller: PortalPoller) -> AsyncIOScheduler:
+    scheduler = AsyncIOScheduler(timezone=s.zone)
+    # Mac спал в 20:00 — сводка придёт, как только проснётся (если не позже чем через DIGEST_GRACE_HOURS)
+    scheduler.add_job(
+        notifier.send_digest, CronTrigger(hour=s.digest_hour, minute=s.digest_minute, timezone=s.zone),
+        id="digest", misfire_grace_time=s.digest_grace_hours * 3600, coalesce=True,
+    )
+    # Пропущенные во сне опросы СДО схлопываются в один
+    scheduler.add_job(
+        poller.poll, "interval", minutes=s.portal_poll_minutes, next_run_time=notifier.now(),
+        id="portal", misfire_grace_time=None, coalesce=True, max_instances=1,
+    )
+    return scheduler
+
+
+async def follow_wall_clock(scheduler: AsyncIOScheduler, every: float = 60) -> None:
+    """Во сне macOS не идут таймеры процесса: задача «через 3 часа» после сна сдвинулась бы
+    на время сна. Раз в минуту просим планировщик сверить расписание с настоящими часами."""
+    while True:
+        await asyncio.sleep(every)
+        scheduler.wakeup()
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    # httpx пишет полный адрес каждого запроса — с sesskey СДО; в логе он не нужен
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # «Running job … executed successfully» каждые 30 минут — шум
+    logging.getLogger("apscheduler").setLevel(logging.WARNING)
     s = Settings()
     db = DB(s.db_path)
     if s.anthropic_api_key:
@@ -96,10 +123,9 @@ async def main() -> None:
     dp.include_router(build_router(notifier, db, extractor, processor, poller.poll))
     dp.include_router(build_group_router(notifier, processor))
 
-    scheduler = AsyncIOScheduler(timezone=s.zone)
-    scheduler.add_job(notifier.send_digest, CronTrigger(hour=s.digest_hour, minute=s.digest_minute, timezone=s.zone))
-    scheduler.add_job(poller.poll, "interval", minutes=s.portal_poll_minutes, next_run_time=notifier.now())
+    scheduler = build_scheduler(s, notifier, poller)
     scheduler.start()
+    watchdog = asyncio.create_task(follow_wall_clock(scheduler))
     log.info("Сводка каждый день в %02d:%02d (%s)", s.digest_hour, s.digest_minute, s.tz)
 
     runner = await start_webapp(s, db)
@@ -110,6 +136,7 @@ async def main() -> None:
     try:
         await dp.start_polling(notifier.bot)
     finally:
+        watchdog.cancel()
         await runner.cleanup()
 
 

@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     tz: str = "Europe/Moscow"
     digest_hour: int = 20
     digest_minute: int = 0
+    # Если в момент сводки Mac спал — прислать её после пробуждения, но не позже чем через столько часов
+    digest_grace_hours: int = 6
     # Опрос портала заодно не даёт истечь сессии Moodle — не делать реже ~раза в час
     portal_poll_minutes: int = 30
     # Статус и баллы со страниц заданий: как часто перепроверять и сколько страниц за один опрос

@@ -102,3 +102,11 @@ async def test_editing_portal_task_protects_it_and_delete_hides_it(api):
 async def test_unknown_task_is_404(api):
     assert (await api.patch("/api/tasks/999", json={"done": True}, headers=api.auth)).status == 404
     assert (await api.delete("/api/tasks/999", headers=api.auth)).status == 404
+
+
+async def test_dev_mode_refuses_public_host():
+    from study_bot.webapp import start_webapp
+
+    s = Settings(_env_file=None, bot_token=TOKEN, owner_id=OWNER, webapp_dev_no_auth=True, webapp_host="0.0.0.0")
+    with pytest.raises(RuntimeError, match="только с WEBAPP_HOST=127.0.0.1"):
+        await start_webapp(s, DB(":memory:"))
