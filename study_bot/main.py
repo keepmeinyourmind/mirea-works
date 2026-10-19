@@ -29,6 +29,8 @@ def build_scheduler(s: Settings, poller: PortalPoller) -> AsyncIOScheduler:
     # У каждого своё время сводки — раз в минуту проверяем, кому пора (см. poller.digest_due)
     scheduler.add_job(poller.send_due_digests, "interval", minutes=1, id="digest",
                       misfire_grace_time=None, coalesce=True, max_instances=1)
+    scheduler.add_job(poller.send_due_reminders, "interval", minutes=1, id="reminders",
+                      misfire_grace_time=None, coalesce=True, max_instances=1)
     # Пропущенные во сне опросы СДО схлопываются в один
     scheduler.add_job(poller.poll_all, "interval", minutes=s.portal_poll_minutes, next_run_time=poller.notifier.now(),
                       id="portal", misfire_grace_time=None, coalesce=True, max_instances=1)

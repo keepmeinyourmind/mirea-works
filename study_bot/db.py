@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS seen_messages (
     key     TEXT PRIMARY KEY,
     version TEXT NOT NULL
 );
+-- Какие напоминания уже отправлены. Срок в ключе: перенесли дедлайн — напомним заново
+CREATE TABLE IF NOT EXISTS reminders (
+    task_id  INTEGER NOT NULL,
+    kind     TEXT NOT NULL,
+    deadline TEXT NOT NULL,
+    sent_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (task_id, kind, deadline)
+);
 """
 
 TASKS = """
@@ -123,6 +131,7 @@ class DB:
 
     def remove_user(self, user_id: int) -> bool:
         """Удаляет пользователя и все его данные (задания, cookie)."""
+        self.conn.execute("DELETE FROM reminders WHERE task_id IN (SELECT id FROM tasks WHERE user_id = ?)", (user_id,))
         self.conn.execute("DELETE FROM tasks WHERE user_id = ?", (user_id,))
         self.conn.execute("DELETE FROM seen_messages WHERE key LIKE ? || '|%'", (str(user_id),))
         cur = self.conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
@@ -306,6 +315,24 @@ class DB:
         self.conn.commit()
         return True
 
+    # ---------- напоминания ----------
+
+    def reminded(self, user_id: int) -> set[tuple[int, str, str]]:
+        """Отправленные напоминания пользователя: (task_id, kind, срок в UTC)."""
+        rows = self.conn.execute(
+            """SELECT r.task_id, r.kind, r.deadline FROM reminders r JOIN tasks t ON t.id = r.task_id
+               WHERE t.user_id = ?""",
+            (user_id,),
+        ).fetchall()
+        return {(r["task_id"], r["kind"], r["deadline"]) for r in rows}
+
+    def mark_reminded(self, items: list[tuple[int, str, datetime]]) -> None:
+        self.conn.executemany(
+            "INSERT OR IGNORE INTO reminders (task_id, kind, deadline) VALUES (?, ?, ?)",
+            [(task_id, kind, _dt(deadline)) for task_id, kind, deadline in items],
+        )
+        self.conn.commit()
+
     def portal_due_for_check(self, user_id: int, checked_before: datetime, done_since: datetime) -> list[Task]:
         """Задания портала, чей статус пора обновить: открытые и недавно сданные, но ещё не оценённые."""
         rows = self.conn.execute(
@@ -376,4 +403,6 @@ def _row(r: sqlite3.Row) -> Task:
         auto_done=bool(r["auto_done"]),
         edited=bool(r["edited"]),
         checked_at=_parse(r["checked_at"]),
+        # datetime('now') в SQLite — UTC без зоны
+        created_at=datetime.fromisoformat(r["created_at"]).replace(tzinfo=timezone.utc) if r["created_at"] else None,
     )

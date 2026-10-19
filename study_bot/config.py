@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     portal_check_batch: int = 15
     # Сразу писать о новом задании из группы, не дожидаясь вечерней сводки
     notify_new: bool = True
+    # Напоминания до срока: за сутки и за 3 часа (+ о неотправленном черновике в СДО)
+    reminders: bool = True
+    remind_day_hours: int = 24
+    remind_soon_hours: int = 3
+    # Ночью «за сутки» не будим: напоминание придёт утром. «За 3 часа» приходит всегда
+    quiet_from_hour: int = 23
+    quiet_to_hour: int = 8
 
     # Портал: "moodle" (СДО МИРЭА) или "none"
     portal_kind: str = "none"

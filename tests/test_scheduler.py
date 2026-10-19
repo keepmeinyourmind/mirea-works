@@ -18,6 +18,9 @@ class StubPoller:
     async def send_due_digests(self):
         pass
 
+    async def send_due_reminders(self):
+        pass
+
     async def poll_all(self):
         pass
 
@@ -27,6 +30,8 @@ def test_digest_checked_every_minute_and_polls_coalesce():
     sch = build_scheduler(p.s, p)
     digest, portal = sch.get_job("digest"), sch.get_job("portal")
     assert digest.trigger.interval.total_seconds() == 60 and digest.coalesce and digest.max_instances == 1
+    reminders = sch.get_job("reminders")
+    assert reminders.trigger.interval.total_seconds() == 60 and reminders.coalesce and reminders.max_instances == 1
     assert portal.misfire_grace_time is None and portal.coalesce and portal.max_instances == 1
 
 

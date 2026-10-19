@@ -22,6 +22,7 @@ class Task:
     auto_done: bool = False  # закрыто ботом, потому что сдано в СДО
     edited: bool = False  # правил вручную — СДО больше не перезаписывает поля
     checked_at: datetime | None = None  # когда последний раз смотрели статус в СДО
+    created_at: datetime | None = None  # когда задание появилось у бота (UTC)
 
 
 @dataclass

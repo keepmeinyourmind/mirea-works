@@ -1,5 +1,13 @@
 # Сервер: бот + Xray (VLESS-клиент: Telegram и Claude недоступны из РФ напрямую) + Caddy (https для Mini App).
 # Запуск — через scripts/deploy.sh: он передаёт DOMAIN в deploy.env.
+
+# Логи контейнеров: не больше 3 файлов по 10 МБ на сервис, иначе за месяцы они съедят диск
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   bot:
     build: .
@@ -16,6 +24,7 @@ services:
       - ./data:/app/data  # tasks.sqlite3 и cookie портала — переживают обновления
     depends_on: [xray]
     restart: unless-stopped
+    logging: *logging
 
   xray:
     image: ghcr.io/xtls/xray-core@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7  # 26.3.27
@@ -23,6 +32,7 @@ services:
     volumes:
       - /root/xray:/usr/local/etc/xray:ro  # конфиг собран из ссылки VLESS прямо на сервере, в git его нет
     restart: unless-stopped
+    logging: *logging
 
   caddy:
     image: caddy@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17  # 2.8.4-alpine
@@ -35,6 +45,7 @@ services:
       - caddy_config:/config
     depends_on: [bot]
     restart: unless-stopped
+    logging: *logging
 
 volumes:
   caddy_data:

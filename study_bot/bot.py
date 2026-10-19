@@ -23,6 +23,7 @@ from .db import DB
 from .digest import build_digest, format_line
 from .extract import TaskExtractor
 from .models import Task, User
+from .reminders import DAY, DRAFT, SOON, Reminder
 from .sources.chat import ChatProcessor, IncomingMessage, message_link, text_key
 from .status import STARTED, bot_rss_mb, format_status, read_disk, read_host
 from .vault import Vault
@@ -31,7 +32,8 @@ log = logging.getLogger(__name__)
 
 MAX_BUTTONS = 50
 HELP = html.escape(
-    "Я собираю задания из СДО и из сообщений, которые ты мне пересылаешь, и каждый вечер присылаю сводку.\n\n"
+    "Я собираю задания из СДО и из сообщений, которые ты мне пересылаешь, и каждый вечер присылаю сводку. "
+    "А ещё напоминаю за сутки и за 3 часа до срока и про черновики, которые не отправлены в СДО.\n\n"
     "Перешли мне сообщение из чата группы (или просто напиши текст) — достану из него задания.\n\n"
     "/digest — сводка сейчас\n"
     "/tasks — все открытые задания\n"
@@ -121,6 +123,26 @@ class Notifier:
         await self.bot.send_message(
             user_id, f"<b>{title}</b>\n" + "\n".join(lines),
             reply_markup=done_keyboard(tasks, self.s.webapp_url, open_task=one),
+        )
+
+    async def send_reminders(self, user_id: int, items: list[Reminder]) -> None:
+        sections = [
+            (SOON, "⏰ <b>Скоро срок</b>", ""),
+            (DAY, "⏳ <b>Меньше суток до срока</b>", ""),
+            (DRAFT, "⚠️ <b>Черновик в СДО не отправлен</b>",
+             "\nФайл загружен, но преподаватель его не увидит: открой задание и нажми «Отправить на проверку»."),
+        ]
+        blocks, shown = [], []
+        for kind, title, note in sections:
+            tasks = [r.task for r in items if r.kind == kind]
+            if not tasks:
+                continue
+            lines = [format_line(len(shown) + n, t, self.s.zone) for n, t in enumerate(tasks, start=1)]
+            shown += tasks
+            blocks.append(title + "\n" + "\n".join(lines) + note)
+        one = shown[0].id if len(shown) == 1 else None
+        await self.bot.send_message(
+            user_id, "\n\n".join(blocks), reply_markup=done_keyboard(shown, self.s.webapp_url, open_task=one),
         )
 
     async def say(self, user_id: int, text: str) -> None:

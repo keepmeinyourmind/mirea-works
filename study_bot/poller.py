@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from .db import DB
 from .models import User
+from .reminders import due_reminders, is_quiet
 from .sources.portal import NullPortal, PortalAuthError, PortalSource
 from .vault import Vault
 
@@ -103,3 +104,23 @@ class PortalPoller:
                     await self.notifier.send_digest(user.id)
                 except Exception:
                     log.exception("Не смог отправить сводку пользователю %s", user.id)
+
+    async def send_due_reminders(self) -> None:
+        """Раз в минуту: напоминания за сутки и за 3 часа до срока, о неотправленных черновиках."""
+        if not self.s.reminders:
+            return
+        now = self.notifier.now()
+        quiet = is_quiet(now, self.s.quiet_from_hour, self.s.quiet_to_hour)
+        for user in self.db.list_users():
+            items = due_reminders(
+                self.db.list_open(user.id), self.db.reminded(user.id), now,
+                day=timedelta(hours=self.s.remind_day_hours), soon=timedelta(hours=self.s.remind_soon_hours),
+                quiet=quiet,
+            )
+            if not items:
+                continue
+            self.db.mark_reminded([m for r in items for m in r.marks()])  # сначала отметка — без повторов
+            try:
+                await self.notifier.send_reminders(user.id, items)
+            except Exception:
+                log.exception("Не смог отправить напоминание пользователю %s", user.id)

@@ -166,6 +166,20 @@ async def test_forwarded_task_goes_to_sender(h):
     assert h.db.list_open(ADMIN) == []
 
 
+async def test_reminder_message_numbers_tasks_across_sections(h):
+    from study_bot.reminders import DAY, DRAFT, SOON, Reminder
+
+    soon = Task(source="portal", source_id="1", title="лаба 4", id=11, deadline=NOW, points=5, status="draft")
+    day = Task(source="manual", source_id="2", title="эссе", id=12, deadline=NOW)
+    draft = Task(source="portal", source_id="3", title="курсовая", id=13, deadline=NOW, status="draft")
+    await h.notifier.send_reminders(ADMIN, [Reminder(day, DAY), Reminder(soon, SOON, draft=True), Reminder(draft, DRAFT)])
+    msg = h.session.sent[-1]
+    assert msg.text.index("Скоро срок") < msg.text.index("Меньше суток") < msg.text.index("Черновик в СДО")
+    assert "1. лаба 4" in msg.text and "+5 б." in msg.text and "2. эссе" in msg.text and "3. курсовая" in msg.text
+    buttons = [b.callback_data for row in msg.reply_markup.inline_keyboard for b in row if b.callback_data]
+    assert buttons == ["done:11", "done:12", "done:13"]
+
+
 async def test_status_is_admin_only(h):
     h.db.add_user(FRIEND, "Аня")
     await h.send(FRIEND, "/status")
