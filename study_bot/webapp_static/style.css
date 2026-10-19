@@ -182,7 +182,11 @@ h1.edit-h { font-size: 20px; font-weight: 700; margin: 4px 0 16px; }
 .fld label { font-size: 13px; color: var(--muted); }
 input { height: 46px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); padding: 0 12px; font: 16px "Onest", sans-serif; width: 100%; min-width: 0; }
 input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+/* iOS рисует дату и время своим элементом с собственной минимальной шириной — он вылезает из колонки */
+input[type="date"], input[type="time"] { -webkit-appearance: none; appearance: none; display: block; line-height: 44px; text-align: left; }
+input::-webkit-date-and-time-value { text-align: left; margin: 0; }
+.row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.row2 .fld { min-width: 0; }
 .inline { display: flex; gap: 10px; align-items: center; } .inline input { width: 130px; flex: none; }
 .hint { font-size: 12px; color: var(--muted); }
 .form-error { color: var(--danger); font-size: 14px; min-height: 1px; margin-bottom: 8px; }
