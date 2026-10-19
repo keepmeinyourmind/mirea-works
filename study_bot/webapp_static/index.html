@@ -4,15 +4,42 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>StudyBot</title>
+<script>
+  // Оформление до первой отрисовки, чтобы не мигало (точный выбор потом придёт из CloudStorage)
+  try {
+    var th = JSON.parse(localStorage.getItem("theme") || "{}");
+    if (th.palette) document.documentElement.dataset.palette = th.palette;
+  } catch (e) {}
+</script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 <main id="list-screen" class="screen">
+  <header class="top">
+    <div class="hello">
+      <span class="muted" id="today-label"></span>
+      <h1 class="display" id="headline">Задания</h1>
+      <span class="pts" id="sum" hidden></span>
+    </div>
+    <div class="top-right">
+      <svg class="ring" id="ring" width="52" height="52" viewBox="0 0 52 52" role="img" hidden>
+        <circle class="bg" cx="26" cy="26" r="21" fill="none" stroke-width="5"></circle>
+        <circle class="fg" id="ring-fg" cx="26" cy="26" r="21" fill="none" stroke-width="5" stroke-linecap="round" stroke-dasharray="0 132" transform="rotate(-90 26 26)"></circle>
+        <text id="ring-text" x="26" y="30" text-anchor="middle"></text>
+      </svg>
+      <button class="icon-btn" id="theme-btn" aria-label="Оформление"><i class="ti ti-palette"></i></button>
+    </div>
+  </header>
+  <div class="week" id="week"></div>
+  <div id="hero"></div>
+  <div class="late-wrap" id="late"></div>
   <div class="chips" id="chips"></div>
-  <div class="sum" id="sum" hidden></div>
-  <div id="list"></div>
+  <div class="gitems" id="list" style="gap: 16px"></div>
   <div class="empty" id="empty" hidden>
     <i class="ti ti-confetti"></i>
     <b>Открытых заданий нет</b>
@@ -22,9 +49,26 @@
   <div class="fab-wrap"><button class="main" id="new-btn"><i class="ti ti-plus"></i> Новое задание</button></div>
 </main>
 
+<div class="sheet" id="theme-sheet" hidden>
+  <div class="sheet-body" role="dialog" aria-modal="true" aria-labelledby="theme-h">
+    <div class="sheet-head">
+      <h2 id="theme-h">Оформление</h2>
+      <button class="icon-btn" id="theme-close" aria-label="Закрыть"><i class="ti ti-x"></i></button>
+    </div>
+    <h3>Цвета</h3>
+    <div class="palettes" id="palettes"></div>
+    <h3>Тема</h3>
+    <div class="modes" id="modes">
+      <button data-mode="auto" title="Как в Telegram">Авто</button>
+      <button data-mode="light">Светлая</button>
+      <button data-mode="dark">Тёмная</button>
+    </div>
+  </div>
+</div>
+
 <main id="edit-screen" class="screen" hidden>
   <div class="dev-bar" id="dev-back" hidden><button class="link" id="back-btn"><i class="ti ti-arrow-left"></i> Назад</button></div>
-  <h1 id="edit-title">Задание</h1>
+  <h1 class="edit-h display" id="edit-title">Задание</h1>
   <form id="form" novalidate>
     <div class="fld"><label for="f-title">Что сделать</label>
       <input id="f-title" autocomplete="off" placeholder="Лаба 4: сдать отчёт" maxlength="300"></div>

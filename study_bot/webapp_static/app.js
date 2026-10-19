@@ -1,66 +1,149 @@
-// StudyBot Mini App: список заданий и карточка. Данные — через API бота (/api/tasks).
+// StudyBot Mini App: неделя, ближайший дедлайн, задания по дням и карточка. Данные — через API бота (/api/tasks).
 "use strict";
 
 const tg = window.Telegram && window.Telegram.WebApp;
 const inTg = !!(tg && tg.initData);
 const $ = (id) => document.getElementById(id);
+const root = document.documentElement;
 
-const SECS = ["Просрочено", "Сегодня", "Завтра", "На неделе", "Позже", "Без срока", "Сделано"];
-const WEEK = ["Сегодня", "Завтра", "На неделе"];
 const WD = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
-const SRC = { portal: "СДО", tg: "чат", manual: "вручную" };
+const MON = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+const SRC = { portal: "СДО", tg: "из чата", manual: "вручную" };
 const LINK = {
   portal: ["ti-school", "Открыть в СДО"],
   tg: ["ti-message", "Открыть сообщение в группе"],
   manual: ["ti-link", "Открыть ссылку"],
 };
+// Цвета точек предметов — различимы и на светлом, и на тёмном фоне
+const DOTS = ["#6366F1", "#10B981", "#F59E0B", "#EC4899", "#0EA5E9", "#8B5CF6"];
+// [фон карточки «Ближайший дедлайн», акцент] — для кружков в выборе оформления
+const PALETTES = [
+  { id: "indigo", name: "Индиго", light: ["#1E1B4B", "#4F46E5"], dark: ["#1C2230", "#C6F36B"] },
+  { id: "mint", name: "Мята", light: ["#0B3B36", "#0F766E"], dark: ["#10231F", "#5EEAD4"] },
+  { id: "sunset", name: "Закат", light: ["#3B1426", "#C2410C"], dark: ["#2A1420", "#FB923C"] },
+  { id: "ocean", name: "Океан", light: ["#082F49", "#0369A1"], dark: ["#0C2233", "#38BDF8"] },
+  { id: "graphite", name: "Графит", light: ["#18181B", "#FACC15"], dark: ["#1F1F23", "#FACC15"] },
+];
 const FILTER_KEY = "subject_filter";
+const THEME_KEY = "theme";
 
 let tasks = [];
 let subjects = [];
-let filter = null;
-let current = null; // задание в карточке; {} — новое
+let filter = null;    // предмет
+let dayFilter = null; // 0…6 — день недели в полоске, null — все
+let current = null;   // задание в карточке; {} — новое
+let theme = { palette: "indigo", mode: "auto" };
+
+// ---------- хранение настроек ----------
+
+function store(key, value) {
+  if (inTg && tg.CloudStorage) tg.CloudStorage.setItem(key, value, () => {});
+  try { localStorage.setItem(key, value); } catch (e) { /* приватный режим — не страшно */ }
+}
+function restore(key) {
+  const local = () => { try { return localStorage.getItem(key); } catch (e) { return null; } };
+  return new Promise((resolve) => {
+    if (inTg && tg.CloudStorage) tg.CloudStorage.getItem(key, (err, v) => resolve(err ? local() : v || local()));
+    else resolve(local());
+  });
+}
 
 // ---------- оформление ----------
 
-function applyTheme() {
-  const dark = inTg ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
-  document.documentElement.classList.toggle("dark", dark);
+function isDark() {
+  if (theme.mode !== "auto") return theme.mode === "dark";
+  return inTg ? tg.colorScheme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
 }
+const cssVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+
+function applyTheme() {
+  root.classList.toggle("dark", isDark());
+  root.dataset.palette = PALETTES.some((p) => p.id === theme.palette) ? theme.palette : "indigo";
+  if (!inTg) return;
+  const bg = cssVar("--bg");
+  for (const fn of ["setHeaderColor", "setBackgroundColor", "setBottomBarColor"]) {
+    try { if (tg[fn]) tg[fn](bg); } catch (e) { /* старый клиент Telegram */ }
+  }
+  try { tg.MainButton.setParams({ color: cssVar("--accent"), text_color: cssVar("--on-accent") }); } catch (e) { /* то же */ }
+}
+
+function renderSheet() {
+  const dark = isDark();
+  $("palettes").innerHTML = PALETTES.map((p) => {
+    const [a, b] = p[dark ? "dark" : "light"];
+    const on = p.id === root.dataset.palette;
+    return `<button class="pal ${on ? "on" : ""}" data-pal="${p.id}" aria-pressed="${on}">
+      <span class="sw" style="background:${a}"><i style="background:${b}"></i></span>${p.name}</button>`;
+  }).join("");
+  for (const b of $("modes").children) {
+    b.classList.toggle("on", b.dataset.mode === theme.mode);
+    b.setAttribute("aria-pressed", b.dataset.mode === theme.mode);
+  }
+}
+function setTheme(patch) {
+  theme = { ...theme, ...patch };
+  store(THEME_KEY, JSON.stringify(theme));
+  applyTheme();
+  renderSheet();
+  haptic("select");
+}
+function openSheet() {
+  renderSheet();
+  $("theme-sheet").hidden = false;
+  if (inTg) tg.BackButton.show();
+}
+function closeSheet() {
+  $("theme-sheet").hidden = true;
+  if (inTg && !current) tg.BackButton.hide();
+}
+
+// ---------- мелочи ----------
 
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtNum = (n) => (Number.isInteger(n) ? String(n) : String(n).replace(".", ","));
-function plural(n) {
-  n = Math.floor(n);
+function pl(n, one, few, many) {
+  n = Math.floor(Math.abs(n));
   const a = n % 10, b = n % 100;
-  return a === 1 && b !== 11 ? "балл" : a >= 2 && a <= 4 && (b < 12 || b > 14) ? "балла" : "баллов";
+  return a === 1 && b !== 11 ? one : a >= 2 && a <= 4 && (b < 12 || b > 14) ? few : many;
 }
-function colorOf(s) {
+const plural = (n) => pl(n, "балл", "балла", "баллов");
+function dotOf(s) {
+  if (!s) return "var(--check)";
   let h = 0;
   for (const ch of s) h = (h * 31 + ch.codePointAt(0)) >>> 0;
-  return "c" + (h % 6);
+  return DOTS[h % DOTS.length];
 }
-const pill = (s) => (s ? `<span class="pill ${colorOf(s)}">${esc(s)}</span>` : "");
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
-// ---------- сроки и секции ----------
+// ---------- сроки ----------
 
 const deadlineOf = (t) => (t.deadline ? new Date(t.deadline) : null);
-function sectionOf(t) {
-  if (t.done) return "Сделано";
-  const d = deadlineOf(t);
-  if (!d) return "Без срока";
-  const now = new Date();
-  if (d < now) return "Просрочено";
-  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
-  const days = Math.round((day(d) - day(now)) / 864e5);
-  return days === 0 ? "Сегодня" : days === 1 ? "Завтра" : days <= 7 ? "На неделе" : "Позже";
+const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate());
+const dayDiff = (d, now) => Math.round((startOfDay(d) - startOfDay(now)) / 864e5);
+const hm = (d) => d.toTimeString().slice(0, 5);
+const dayMon = (d) => `${d.getDate()} ${MON[d.getMonth()]}`;
+const byDeadline = (a, b) => (deadlineOf(a) || 0) - (deadlineOf(b) || 0);
+
+function timeLeft(d, now) {
+  const min = Math.max(1, Math.round((d - now) / 60000));
+  if (min < 60) return `${min} мин`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} ч ${min % 60} мин`;
+  return `${Math.floor(h / 24)} дн ${h % 24} ч`;
 }
-function deadlineLabel(t) {
-  const d = deadlineOf(t);
-  if (!d) return "без срока";
-  const hm = d.toTimeString().slice(0, 5);
-  const dm = `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}`;
-  return `до ${dm} (${WD[d.getDay()]})${hm !== "23:59" ? ", " + hm : ""}`;
+function dueLabel(d, now) {
+  const k = dayDiff(d, now);
+  if (k === 0) return `до ${hm(d)}`;
+  if (k === 1) return `завтра, до ${hm(d)}`;
+  return `до ${WD[d.getDay()]}, ${dayMon(d)}, ${hm(d)}`;
+}
+function lateLabel(d, now) {
+  const k = -dayDiff(d, now);
+  if (k <= 0) {
+    const h = Math.max(1, Math.round((now - d) / 36e5));
+    return `Просрочено на ${h} ч`;
+  }
+  return `Просрочено на ${k} ${pl(k, "день", "дня", "дней")}`;
 }
 
 // ---------- статус из СДО ----------
@@ -69,7 +152,7 @@ function statusOf(t) {
   if (t.source !== "portal" || !t.status) return null;
   const pts = t.points != null ? fmtNum(t.points) : "?";
   switch (t.status) {
-    case "draft": return { cls: "st-warn", short: "Черновик, не отправлено", ans: "Черновик (не отправлен)", grade: "Не оценено" };
+    case "draft": return { cls: "st-warn", short: "Черновик не отправлен", ans: "Черновик (не отправлен)", grade: "Не оценено" };
     case "submitted": return { cls: "st-info", short: "Ждёт оценки", ans: "Отправлено для оценивания", grade: "Не оценено" };
     case "graded": {
       const g = t.grade != null ? `Оценено: ${fmtNum(t.grade)} из ${pts}` : "Оценено";
@@ -120,53 +203,129 @@ async function load() {
   }
 }
 
-// ---------- хранение фильтра ----------
-
-function saveFilter() {
-  const v = filter || "";
-  if (inTg && tg.CloudStorage) tg.CloudStorage.setItem(FILTER_KEY, v, () => {});
-  else try { localStorage.setItem(FILTER_KEY, v); } catch (e) { /* приватный режим — не страшно */ }
-}
-function loadFilter() {
-  return new Promise((resolve) => {
-    if (inTg && tg.CloudStorage) tg.CloudStorage.getItem(FILTER_KEY, (err, v) => resolve(err ? null : v || null));
-    else { try { resolve(localStorage.getItem(FILTER_KEY) || null); } catch (e) { resolve(null); } }
-  });
-}
-
 // ---------- список ----------
 
+const ptsTag = (t) => (t.points ? `<span class="pts">+${fmtNum(t.points)} б.</span>` : "");
+function stTag(t) {
+  const st = statusOf(t);
+  return st && st.short ? `<span class="st ${st.cls}">${esc(st.short)}</span>` : "";
+}
+const chk = (t) => `<button class="chk ${t.done ? "on" : ""}" data-done="${t.id}" aria-label="${t.done ? "Вернуть в работу" : "Отметить сделанным"}"><i class="ti ti-check"></i></button>`;
+
+function card(t, time) {
+  return `<div class="card ${t.done ? "done" : ""}" data-id="${t.id}">${chk(t)}
+    <div class="cbody">
+      <div class="crow"><span class="subj"><span class="dot" style="background:${dotOf(t.subject)}"></span><span>${esc(t.subject || SRC[t.source] || "")}</span></span>
+        <span class="time">${esc(time)}</span></div>
+      <span class="ctitle">${esc(t.title)}</span>
+      <div class="tags">${ptsTag(t)}${stTag(t)}</div>
+    </div></div>`;
+}
+function group(label, sub, items, timeOf, now = false) {
+  if (!items.length) return "";
+  return `<section class="group"><div class="glabel ${now ? "now" : ""}"><b>${label}</b><span>${sub}</span></div>
+    <div class="gitems">${items.map((t) => card(t, timeOf(t))).join("")}</div></section>`;
+}
+
+function renderHeader(vis, open, upcoming, late, now) {
+  $("today-label").textContent = cap(now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" }));
+  const inWeek = (t) => { const d = deadlineOf(t); if (!d) return false; const k = dayDiff(d, now); return k >= 0 && k < 7; };
+  const today = upcoming.filter((t) => dayDiff(deadlineOf(t), now) === 0).length;
+  const week = upcoming.filter(inWeek);
+  $("headline").textContent =
+    today ? `Сегодня ${today} ${pl(today, "дедлайн", "дедлайна", "дедлайнов")}`
+    : late.length ? `Просрочено: ${late.length}`
+    : week.length ? `На неделе ${week.length} ${pl(week.length, "дело", "дела", "дел")}`
+    : open.length ? "Срочного нет" : "Всё сдано";
+
+  const sum = Math.round(week.reduce((a, t) => a + (t.points || 0), 0) * 10) / 10;
+  $("sum").hidden = !sum;
+  $("sum").textContent = `можно набрать ${fmtNum(sum)} ${plural(sum)} за неделю`;
+
+  const all = vis.filter(inWeek);
+  const done = all.filter((t) => t.done).length;
+  $("ring").toggleAttribute("hidden", !all.length); // у SVG нет свойства .hidden
+  $("ring-fg").setAttribute("stroke-dasharray", `${(132 * done) / (all.length || 1)} 132`);
+  $("ring-text").textContent = `${done}/${all.length}`;
+  $("ring").setAttribute("aria-label", `Сделано ${done} из ${all.length} за неделю`);
+}
+
+function renderWeek(open, now) {
+  let html = "";
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + i);
+    const n = open.filter((t) => { const x = deadlineOf(t); return x && x >= now && dayDiff(x, now) === i; }).length;
+    const on = dayFilter === i;
+    html += `<button class="day ${i === 0 ? "today" : ""} ${on ? "on" : ""}" data-day="${i}" aria-pressed="${on}" aria-label="${d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}: ${n} ${pl(n, "задание", "задания", "заданий")}">
+      <span class="wd">${WD[d.getDay()]}</span><span class="n">${d.getDate()}</span><span class="dots">${"•".repeat(Math.min(n, 3))}</span></button>`;
+  }
+  $("week").innerHTML = html;
+}
+
+function renderHero(t, now) {
+  if (!t) { $("hero").innerHTML = ""; return; }
+  const d = deadlineOf(t);
+  const st = t.status === "draft"
+    ? `<div class="hero-warn"><i class="ti ti-alert-triangle"></i><span>В СДО лежит черновик — он не отправлен</span></div>` : "";
+  const link = t.url ? `<button class="primary" data-link="${esc(t.url)}">${(LINK[t.source] || LINK.manual)[1].replace(" сообщение в группе", "")}</button>` : "";
+  $("hero").innerHTML = `<section class="hero" data-id="${t.id}">
+    <div class="hero-head"><span class="kicker">Ближайший дедлайн</span>${ptsTag(t)}</div>
+    <div style="display:flex;flex-direction:column;gap:4px"><span class="hero-title">${esc(t.title)}</span>
+      ${t.subject ? `<span class="hero-sub">${esc(t.subject)}</span>` : ""}</div>
+    <div class="count"><b class="display">${timeLeft(d, now)}</b><span>${dueLabel(d, now)}</span></div>
+    ${st}
+    <div class="hero-actions">${link}<button class="${link ? "ghost" : "primary"}" data-done="${t.id}">Готово</button></div>
+  </section>`;
+}
+
+function renderLate(late, now) {
+  $("late").innerHTML = late.map((t) => `<div class="late" data-id="${t.id}">
+    <span class="late-icon"><i class="ti ti-clock-exclamation"></i></span>
+    <div class="late-body"><b>${esc(t.title)}</b><span>${lateLabel(deadlineOf(t), now)}${t.subject ? " · " + esc(t.subject) : ""}</span></div>
+    ${chk(t)}</div>`).join("");
+}
+
 function renderList() {
+  const now = new Date();
   const used = [...new Set(tasks.map((t) => t.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
   if (filter && !used.includes(filter)) filter = null;
+  $("chips").hidden = used.length < 2;
   $("chips").innerHTML =
-    `<button class="pill all ${filter ? "" : "on"}" data-filter="">Все</button>` +
-    used.map((s) => `<button class="pill ${colorOf(s)} ${filter && filter !== s ? "off" : ""}" data-filter="${esc(s)}">${esc(s)}</button>`).join("");
+    `<button class="chip ${filter ? "" : "on"}" data-filter="">Все</button>` +
+    used.map((s) => `<button class="chip ${filter === s ? "on" : ""}" data-filter="${esc(s)}"><span class="dot" style="background:${dotOf(s)}"></span>${esc(s)}</button>`).join("");
 
   const vis = tasks.filter((t) => !filter || t.subject === filter);
-  const week = vis.filter((t) => WEEK.includes(sectionOf(t))).reduce((a, t) => a + (t.points || 0), 0);
-  $("sum").hidden = week === 0;
-  $("sum").innerHTML = `<span>Можно набрать на этой неделе</span><span class="pts">${fmtNum(Math.round(week * 10) / 10)} ${plural(week)}</span>`;
+  const open = vis.filter((t) => !t.done);
+  const upcoming = open.filter((t) => deadlineOf(t) && deadlineOf(t) >= now).sort(byDeadline);
+  const late = open.filter((t) => deadlineOf(t) && deadlineOf(t) < now).sort(byDeadline);
+  renderHeader(vis, open, upcoming, late, now);
+  renderWeek(open, now);
 
   let html = "";
-  for (const sec of SECS) {
-    const items = vis.filter((t) => sectionOf(t) === sec).sort((a, b) => (deadlineOf(a) || 0) - (deadlineOf(b) || 0));
-    if (!items.length) continue;
-    const late = sec === "Просрочено";
-    html += `<div class="sec ${late ? "red" : ""}"><span>${sec}</span><span>${items.filter((t) => !t.done).length || ""}</span></div>`;
-    for (const t of items) {
-      const st = statusOf(t);
-      html += `<div class="row ${t.done ? "done" : ""}" data-id="${t.id}">
-        <button class="chk ${t.done ? "on" : ""}" data-done="${t.id}" aria-label="${t.done ? "Вернуть в работу" : "Отметить сделанным"}"><i class="ti ti-check"></i></button>
-        <div class="body"><div class="title">${esc(t.title)}</div>
-          <div class="meta">${pill(t.subject)}<span class="${late && !t.done ? "late" : ""}">${deadlineLabel(t)} · ${SRC[t.source] || ""}</span>${st && st.short ? `<span class="st ${st.cls}">${st.short}</span>` : ""}</div></div>
-        ${t.url ? `<a class="lnk" href="${esc(t.url)}" data-link="${esc(t.url)}" aria-label="${LINK[t.source][1]}"><i class="ti ti-external-link"></i></a>` : ""}
-        ${t.points ? `<span class="pts">+${fmtNum(t.points)} б.</span>` : ""}
-        <i class="ti ti-chevron-right chev"></i></div>`;
+  if (dayFilter !== null) {
+    renderHero(null);
+    renderLate([], now);
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayFilter);
+    const items = vis.filter((t) => deadlineOf(t) && dayDiff(deadlineOf(t), now) === dayFilter && (t.done || deadlineOf(t) >= now)).sort(byDeadline);
+    html = group(cap(WD[d.getDay()]), dayMon(d), items, (t) => hm(deadlineOf(t)), dayFilter === 0)
+      || `<div class="empty"><b>В этот день сроков нет</b><span>Нажми на день ещё раз, чтобы вернуть все задания.</span></div>`;
+  } else {
+    const hero = upcoming[0];
+    renderHero(hero, now);
+    renderLate(late, now);
+    const rest = upcoming.filter((t) => t !== hero);
+    for (let k = 0; k < 7; k++) {
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + k);
+      const sub = k === 0 ? "сегодня" : k === 1 ? "завтра" : dayMon(d);
+      html += group(cap(WD[d.getDay()]), sub, rest.filter((t) => dayDiff(deadlineOf(t), now) === k), (t) => hm(deadlineOf(t)), k === 0);
     }
+    html += group("Позже", "", rest.filter((t) => dayDiff(deadlineOf(t), now) >= 7), (t) => dayMon(deadlineOf(t)));
+    html += group("Без", "срока", open.filter((t) => !deadlineOf(t)), () => "");
+    const done = vis.filter((t) => t.done).sort((a, b) => byDeadline(b, a));
+    html += group("Готово", "", done, (t) => (deadlineOf(t) ? dayMon(deadlineOf(t)) : ""));
   }
   $("list").innerHTML = html;
-  $("empty").hidden = !!vis.some((t) => !t.done) || !$("error").hidden;
+  $("empty").hidden = dayFilter !== null || open.length > 0 || !$("error").hidden;
 }
 
 // ---------- карточка ----------
@@ -180,7 +339,7 @@ function openEdit(task) {
   $("f-subject").value = current.subject || "";
   $("subjects").innerHTML = subjects.map((s) => `<option value="${esc(s)}">`).join("");
   $("f-date").value = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
-  $("f-time").value = d ? d.toTimeString().slice(0, 5) : "23:59";
+  $("f-time").value = d ? hm(d) : "23:59";
   $("f-points").value = current.points ?? "";
   $("points-hint").textContent = current.source === "portal" && current.points != null && !current.edited ? "из СДО" : "";
   $("url-field").hidden = !!current.id && current.source !== "manual";
@@ -235,6 +394,11 @@ function closeEdit() {
   $("list-screen").hidden = false;
   if (inTg) { tg.BackButton.hide(); tg.MainButton.hide(); }
   renderList();
+}
+
+function onBack() {
+  if (!$("theme-sheet").hidden) closeSheet();
+  else closeEdit();
 }
 
 function formData() {
@@ -310,6 +474,7 @@ async function toggleDone(id) {
 function haptic(kind) {
   if (!inTg || !tg.HapticFeedback) return;
   if (kind === "light") tg.HapticFeedback.impactOccurred("light");
+  else if (kind === "select") tg.HapticFeedback.selectionChanged();
   else tg.HapticFeedback.notificationOccurred(kind);
 }
 
@@ -327,16 +492,31 @@ document.addEventListener("click", (e) => {
   if (link) {
     e.stopPropagation();
     if (openLink(link.dataset.link)) e.preventDefault(); // в Telegram ссылки открываем его средствами
+    else if (link.tagName === "BUTTON") window.open(link.dataset.link, "_blank", "noopener");
     return;
   }
-  const chk = e.target.closest("[data-done]");
-  if (chk) return toggleDone(Number(chk.dataset.done));
+  const done = e.target.closest("[data-done]");
+  if (done) return toggleDone(Number(done.dataset.done));
+  const pal = e.target.closest("[data-pal]"); // не data-palette: он стоит на <html>
+  if (pal) return setTheme({ palette: pal.dataset.pal });
+  const mode = e.target.closest("[data-mode]");
+  if (mode) return setTheme({ mode: mode.dataset.mode });
+  if (e.target === $("theme-sheet")) return closeSheet(); // тап мимо листа
+  const day = e.target.closest("[data-day]");
+  if (day) {
+    const i = Number(day.dataset.day);
+    dayFilter = dayFilter === i ? null : i;
+    haptic("select");
+    return renderList();
+  }
   const f = e.target.closest("[data-filter]");
-  if (f) { filter = f.dataset.filter || null; saveFilter(); return renderList(); }
-  const row = e.target.closest(".row[data-id]");
-  if (row) openEdit(tasks.find((t) => t.id === Number(row.dataset.id)));
+  if (f) { filter = f.dataset.filter || null; store(FILTER_KEY, filter || ""); return renderList(); }
+  const item = e.target.closest("#list-screen [data-id]");
+  if (item) openEdit(tasks.find((t) => t.id === Number(item.dataset.id)));
 });
 $("new-btn").addEventListener("click", () => openEdit(null));
+$("theme-btn").addEventListener("click", openSheet);
+$("theme-close").addEventListener("click", closeSheet);
 $("save-btn").addEventListener("click", save);
 $("back-btn").addEventListener("click", closeEdit);
 $("delete-btn").addEventListener("click", remove);
@@ -344,17 +524,21 @@ $("form").addEventListener("submit", (e) => { e.preventDefault(); save(); });
 $("f-title").addEventListener("input", () => { $("form-error").textContent = ""; });
 
 async function start() {
+  try { theme = { ...theme, ...JSON.parse(localStorage.getItem(THEME_KEY) || "{}") }; } catch (e) { /* нет — по умолчанию */ }
   applyTheme();
   if (inTg) {
     tg.ready();
     tg.expand();
     tg.onEvent("themeChanged", applyTheme);
-    tg.BackButton.onClick(closeEdit);
+    tg.BackButton.onClick(onBack);
     tg.MainButton.onClick(save);
   } else {
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
   }
-  filter = await loadFilter();
+  // Оформление синхронизируется между устройствами через CloudStorage
+  try { theme = { ...theme, ...JSON.parse((await restore(THEME_KEY)) || "{}") }; } catch (e) { /* битое значение */ }
+  applyTheme();
+  filter = (await restore(FILTER_KEY)) || null;
   await load();
   renderList();
   // Кнопка «Открыть» под уведомлением ведёт сразу в карточку: ?task=<id>
@@ -365,6 +549,8 @@ async function start() {
   document.addEventListener("visibilitychange", async () => {
     if (document.visibilityState === "visible" && !current) { await load(); renderList(); }
   });
+  // Обратный отсчёт в «Ближайшем дедлайне»
+  setInterval(() => { if (!current && document.visibilityState === "visible") renderList(); }, 60000);
 }
 
 start();
