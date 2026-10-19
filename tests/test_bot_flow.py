@@ -164,3 +164,11 @@ async def test_forwarded_task_goes_to_sender(h):
     await h.send(FRIEND, "До 25.10 сдать лабу 3")
     assert [t.title for t in h.db.list_open(FRIEND)] == ["До 25.10 сдать лабу 3"]
     assert h.db.list_open(ADMIN) == []
+
+
+async def test_status_is_admin_only(h):
+    h.db.add_user(FRIEND, "Аня")
+    await h.send(FRIEND, "/status")
+    assert h.last(FRIEND) == "Не знаю такой команды. /help"
+    await h.send(ADMIN, "/status")
+    assert "Состояние" in h.last(ADMIN) and "Пользователи</b>: 2" in h.last(ADMIN)

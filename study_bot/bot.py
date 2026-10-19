@@ -3,6 +3,7 @@
 import html
 import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 
@@ -23,6 +24,7 @@ from .digest import build_digest, format_line
 from .extract import TaskExtractor
 from .models import Task, User
 from .sources.chat import ChatProcessor, IncomingMessage, message_link, text_key
+from .status import STARTED, bot_rss_mb, format_status, read_disk, read_host
 from .vault import Vault
 
 log = logging.getLogger(__name__)
@@ -42,7 +44,8 @@ ADMIN_HELP = html.escape(
     "\n\nАдмин:\n"
     "/invite — одноразовая ссылка-приглашение\n"
     "/users — кто пользуется\n"
-    "/kick <id> — отключить пользователя и удалить его данные"
+    "/kick <id> — отключить пользователя и удалить его данные\n"
+    "/status — загрузка сервера и состояние бота"
 )
 COOKIE_HELP = (
     "🔑 <b>Как подключить СДО</b>\n\n"
@@ -317,6 +320,22 @@ def build_router(
             lines.append(f"• {html.escape(u.name)} <code>{u.id}</code> · {sdo} · заданий: {len(db.list_open(u.id))}"
                          f" · сводка {u.digest_hour:02d}:{u.digest_minute:02d}")
         await m.answer("<b>Пользователи</b>\n" + "\n".join(lines))
+
+    @router.message(Command("status"), admin)
+    async def status(m: Message) -> None:
+        all_users = db.list_users()
+        db_path = notifier.s.db_path
+        await m.answer(format_status(
+            host=read_host(),
+            disk=read_disk(db_path.parent if db_path.parent.exists() else "/"),
+            rss_mb=bot_rss_mb(),
+            db_mb=db_path.stat().st_size / 2**20 if db_path.exists() else 0,
+            users=len(all_users),
+            users_sdo=sum(1 for u in all_users if u.cookie_enc and not u.auth_warned),
+            users_expired=sum(1 for u in all_users if u.cookie_enc and u.auth_warned),
+            open_tasks=sum(len(db.list_open(u.id)) for u in all_users),
+            bot_uptime_s=time.time() - STARTED,
+        ))
 
     @router.message(Command("kick"), admin)
     async def kick(m: Message, command: CommandObject) -> None:
