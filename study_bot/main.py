@@ -1,95 +1,37 @@
-"""Точка входа: бот + планировщик в одном asyncio-процессе.
+"""Точка входа: бот + планировщик + Mini App в одном asyncio-процессе.
 
     uv run python -m study_bot.main
 """
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
 
 from aiogram import Dispatcher
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 
-from .bot import COOKIE_HELP, Notifier, build_group_router, build_router
+from .bot import Notifier, build_group_router, build_router
 from .config import Settings
 from .db import DB
 from .extract.llm import Extractor
 from .extract.rules import RulesExtractor
-from .sources.portal import NullPortal, PortalAuthError, PortalSource, make_portal
+from .poller import PortalPoller
 from .sources.chat import ChatProcessor
+from .sources.moodle import read_legacy_cookie
+from .sources.portal import make_portal
+from .vault import Vault
 from .webapp import start_webapp
 
 log = logging.getLogger("study_bot")
 
 
-class PortalPoller:
-    def __init__(self, portal: PortalSource, db: DB, notifier: Notifier):
-        self.portal = portal
-        self.db = db
-        self.notifier = notifier
-        self.auth_warned = False  # чтобы не слать «пришли cookie» при каждом опросе
-
-    async def poll(self, warn: bool = True) -> int | None:
-        """Возвращает число заданий на портале или None, если опрос не удался."""
-        try:
-            tasks = await self.portal.fetch()
-        except PortalAuthError as e:
-            log.warning("Портал: нет доступа: %s", e)
-            if warn and not self.auth_warned:
-                self.auth_warned = True
-                await self.notifier.say(COOKIE_HELP)
-            return None
-        except Exception:
-            log.exception("Портал: ошибка опроса")
-            return None
-        self.auth_warned = False
-        new_ids = [t.source_id for t in tasks if self.db.upsert(t)]
-        if not isinstance(self.portal, NullPortal):
-            now = datetime.now(timezone.utc)
-            closed = self.db.close_missing("portal", {t.source_id for t in tasks}, now - timedelta(days=self.notifier.s.portal_lookback_days))
-            if closed:
-                log.info("Портал: %d заданий сдано — закрыл", len(closed))
-            await self.check_statuses(now)
-        new = [t for sid in new_ids if (t := self.db.get_by_source("portal", sid))]
-        if new and self.notifier.s.notify_new:
-            await self.notifier.notify_new(new)
-        return len(tasks)
-
-    async def check_statuses(self, now: datetime) -> None:
-        """Баллы и статус со страниц заданий: новые — сразу, остальные — раз в PORTAL_STATUS_HOURS."""
-        s = self.notifier.s
-        due = self.db.portal_due_for_check(now - timedelta(hours=s.portal_status_hours), now - timedelta(days=14))
-        due = due[: s.portal_check_batch]  # не грузим СДО десятками страниц за раз
-        if not due or not hasattr(self.portal, "check"):
-            return
-        try:
-            statuses = await self.portal.check(due)
-        except PortalAuthError:
-            return  # о протухшей сессии уже сообщает основной опрос
-        except Exception:
-            log.exception("Портал: ошибка проверки статусов")
-            return
-        for task_id, st in statuses.items():
-            self.db.set_portal_status(
-                task_id, points=st.points, status=st.status, grade=st.grade,
-                attempts_used=st.attempts_used, attempts_total=st.attempts_total, checked_at=now,
-            )
-        log.info("Портал: обновил статус %d заданий", len(statuses))
-
-
-def build_scheduler(s: Settings, notifier: Notifier, poller: PortalPoller) -> AsyncIOScheduler:
+def build_scheduler(s: Settings, poller: PortalPoller) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=s.zone)
-    # Mac спал в 20:00 — сводка придёт, как только проснётся (если не позже чем через DIGEST_GRACE_HOURS)
-    scheduler.add_job(
-        notifier.send_digest, CronTrigger(hour=s.digest_hour, minute=s.digest_minute, timezone=s.zone),
-        id="digest", misfire_grace_time=s.digest_grace_hours * 3600, coalesce=True,
-    )
+    # У каждого своё время сводки — раз в минуту проверяем, кому пора (см. poller.digest_due)
+    scheduler.add_job(poller.send_due_digests, "interval", minutes=1, id="digest",
+                      misfire_grace_time=None, coalesce=True, max_instances=1)
     # Пропущенные во сне опросы СДО схлопываются в один
-    scheduler.add_job(
-        poller.poll, "interval", minutes=s.portal_poll_minutes, next_run_time=notifier.now(),
-        id="portal", misfire_grace_time=None, coalesce=True, max_instances=1,
-    )
+    scheduler.add_job(poller.poll_all, "interval", minutes=s.portal_poll_minutes, next_run_time=poller.notifier.now(),
+                      id="portal", misfire_grace_time=None, coalesce=True, max_instances=1)
     return scheduler
 
 
@@ -101,32 +43,47 @@ async def follow_wall_clock(scheduler: AsyncIOScheduler, every: float = 60) -> N
         scheduler.wakeup()
 
 
+def bootstrap_admin(s: Settings, db: DB, vault: Vault) -> None:
+    """Админ — всегда пользователь. Cookie из однопользовательской версии переезжает в базу зашифрованной."""
+    if not db.get_user(s.owner_id):
+        db.add_user(s.owner_id, "админ")
+    legacy = s.legacy_cookie_path
+    if cookie := read_legacy_cookie(legacy):
+        if not db.get_user(s.owner_id).cookie_enc:
+            db.set_cookie(s.owner_id, vault.encrypt(cookie))
+            log.info("Cookie СДО перенесена в базу (зашифрована)")
+        legacy.unlink()
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     # httpx пишет полный адрес каждого запроса — с sesskey СДО; в логе он не нужен
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    # «Running job … executed successfully» каждые 30 минут — шум
+    # «Running job … executed successfully» каждую минуту — шум
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
+
     s = Settings()
-    db = DB(s.db_path)
+    vault = Vault(s.cookie_key)
+    db = DB(s.db_path, admin_id=s.owner_id)
+    bootstrap_admin(s, db, vault)
     if s.anthropic_api_key:
         extractor = Extractor(s.anthropic_api_key, s.llm_model, s.zone)
         log.info("Разбор сообщений: Claude (%s)", s.llm_model)
     else:
-        extractor = RulesExtractor(s.zone, db.subjects, s.subject_aliases)
+        extractor = RulesExtractor(s.zone, lambda: db.subjects(), s.subject_aliases)
         log.info("Разбор сообщений: правила (бесплатно, без LLM)")
     notifier = Notifier(s, db)
 
     processor = ChatProcessor(db, extractor, frozenset(s.trusted_senders))
-    poller = PortalPoller(make_portal(s), db, notifier)
+    poller = PortalPoller(make_portal(s), db, notifier, vault)
     dp = Dispatcher()
-    dp.include_router(build_router(notifier, db, extractor, processor, poller.poll))
     dp.include_router(build_group_router(notifier, processor))
+    dp.include_router(build_router(notifier, db, extractor, processor, vault, poller.poll_user))
 
-    scheduler = build_scheduler(s, notifier, poller)
+    scheduler = build_scheduler(s, poller)
     scheduler.start()
     watchdog = asyncio.create_task(follow_wall_clock(scheduler))
-    log.info("Сводка каждый день в %02d:%02d (%s)", s.digest_hour, s.digest_minute, s.tz)
+    log.info("Пользователей: %d", len(db.list_users()))
 
     runner = await start_webapp(s, db)
     try:

@@ -25,6 +25,7 @@ MAX_TITLE = 300
 
 SETTINGS = web.AppKey("settings", Settings)
 STORE = web.AppKey("db", DB)
+USER = web.RequestKey("user_id", int)  # кладётся в request проверкой входа
 
 
 class Unauthorized(web.HTTPUnauthorized):
@@ -33,15 +34,15 @@ class Unauthorized(web.HTTPUnauthorized):
 
 
 def check_init_data(init_data: str, settings: Settings, now: float | None = None) -> int:
-    """Возвращает id пользователя или бросает Unauthorized."""
+    """Проверяет подпись и свежесть; возвращает Telegram id пользователя или бросает Unauthorized."""
     try:
         data = safe_parse_webapp_init_data(settings.bot_token, init_data)
     except ValueError:
         raise Unauthorized("Неверная подпись Telegram")
     if (now or time.time()) - data.auth_date.timestamp() > MAX_INIT_AGE:
         raise Unauthorized("Сессия приложения устарела — открой его заново")
-    if not data.user or data.user.id != settings.owner_id:
-        raise web.HTTPForbidden(text="Это личное приложение")
+    if not data.user:
+        raise Unauthorized("Открой приложение из Telegram")
     return data.user.id
 
 
@@ -51,11 +52,15 @@ async def auth(request: web.Request, handler):
         return await handler(request)
     s = request.app[SETTINGS]
     if s.webapp_dev_no_auth:
-        return await handler(request)
-    header = request.headers.get("Authorization", "")
-    if not header.startswith("tma "):
-        raise Unauthorized("Открой приложение из Telegram")
-    check_init_data(header[4:], s)
+        user_id = s.owner_id  # локальная разработка: смотрим как админ
+    else:
+        header = request.headers.get("Authorization", "")
+        if not header.startswith("tma "):
+            raise Unauthorized("Открой приложение из Telegram")
+        user_id = check_init_data(header[4:], s)
+    if not request.app[STORE].get_user(user_id):
+        raise web.HTTPForbidden(text="Это закрытый бот — нужен пригласительный линк от владельца")
+    request[USER] = user_id
     return await handler(request)
 
 
@@ -132,10 +137,11 @@ def parse_fields(body: dict, s: Settings, partial: bool) -> dict:
 async def list_tasks(request: web.Request) -> web.Response:
     s, db = request.app[SETTINGS], request.app[STORE]
     since = datetime.now(s.zone) - timedelta(days=DONE_DAYS)
-    tasks = db.list_visible(done_since=since)
+    uid = request[USER]
+    tasks = db.list_visible(uid, done_since=since)
     return web.json_response({
         "tasks": [task_json(t, s) for t in tasks],
-        "subjects": sorted(set(db.subjects(None))),
+        "subjects": sorted(set(db.subjects(uid))),
         "now": datetime.now(s.zone).isoformat(),
     })
 
@@ -143,24 +149,24 @@ async def list_tasks(request: web.Request) -> web.Response:
 async def create_task(request: web.Request) -> web.Response:
     s, db = request.app[SETTINGS], request.app[STORE]
     f = parse_fields(await _json(request), s, partial=False)
-    t = db.create_manual(f["title"], f.get("subject"), f.get("deadline"), f.get("points"), f.get("url"))
+    t = db.create_manual(request[USER], f["title"], f.get("subject"), f.get("deadline"), f.get("points"), f.get("url"))
     return web.json_response(task_json(t, s), status=201)
 
 
 async def update_task(request: web.Request) -> web.Response:
     s, db = request.app[SETTINGS], request.app[STORE]
-    task_id = int(request.match_info["id"])
-    if not db.get(task_id):
+    uid, task_id = request[USER], int(request.match_info["id"])
+    if not db.get(uid, task_id):
         raise web.HTTPNotFound(text="Задание не найдено")
     f = parse_fields(await _json(request), s, partial=True)
     if "done" in f:
-        db.set_done(task_id, f.pop("done"))
-    t = db.update_fields(task_id, f) if f else db.get(task_id)
+        db.set_done(uid, task_id, f.pop("done"))
+    t = db.update_fields(uid, task_id, f) if f else db.get(uid, task_id)
     return web.json_response(task_json(t, s))
 
 
 async def delete_task(request: web.Request) -> web.Response:
-    if not request.app[STORE].remove(int(request.match_info["id"])):
+    if not request.app[STORE].remove(request[USER], int(request.match_info["id"])):
         raise web.HTTPNotFound(text="Задание не найдено")
     return web.Response(status=204)
 

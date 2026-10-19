@@ -20,6 +20,7 @@ log = logging.getLogger(__name__)
 
 @dataclass
 class IncomingMessage:
+    user_id: int  # кому достанутся задания
     key: str  # по нему дедуп и замена заданий после редактирования
     version: str  # меняется при редактировании — тогда разбираем заново
     text: str | None
@@ -43,6 +44,11 @@ def text_key(text: str) -> str:
     return "pm:" + hashlib.sha1(text.strip().encode()).hexdigest()[:16]
 
 
+def seen_key(msg: IncomingMessage) -> str:
+    # У каждого пользователя свой учёт: одно и то же сообщение могут переслать двое
+    return f"{msg.user_id}|{msg.key}"
+
+
 class ChatProcessor:
     def __init__(self, db: DB, extractor: TaskExtractor, trusted: frozenset[int] = frozenset()):
         self.db = db
@@ -51,10 +57,11 @@ class ChatProcessor:
 
     async def process(self, msg: IncomingMessage) -> list[Task] | None:
         """Новые задания из сообщения. None — LLM недоступна (сообщение не помечено, можно повторить)."""
-        if self.db.is_seen(msg.key, msg.version):
+        seen = seen_key(msg)
+        if self.db.is_seen(seen, msg.version):
             return []
         if not msg.explicit and not is_candidate(msg.text, msg.sender_id, self.trusted):
-            self.db.mark_seen(msg.key, msg.version)
+            self.db.mark_seen(seen, msg.version)
             return []
         if not msg.text:
             return []
@@ -66,11 +73,12 @@ class ChatProcessor:
             return None
 
         tasks = [
-            Task(source=msg.source, source_id=f"{msg.key}:{i}", title=e.title, subject=e.subject, deadline=e.deadline, url=msg.url)
+            Task(source=msg.source, source_id=f"{msg.key}:{i}", title=e.title, subject=e.subject, deadline=e.deadline,
+                 url=msg.url, user_id=msg.user_id)
             for i, e in enumerate(extracted)
         ]
-        new = self.db.replace_group(msg.source, f"{msg.key}:", tasks)
-        self.db.mark_seen(msg.key, msg.version)
+        new = self.db.replace_group(msg.user_id, msg.source, f"{msg.key}:", tasks)
+        self.db.mark_seen(seen, msg.version)
         if new:
             log.info("Из %s: %d новых заданий", msg.key, len(new))
         return new

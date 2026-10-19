@@ -10,6 +10,7 @@ dependencies = [
     "httpx>=0.27",
     "pydantic-settings>=2.4",
     "aiohttp-socks>=0.10",
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]

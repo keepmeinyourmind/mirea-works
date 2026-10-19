@@ -8,7 +8,7 @@ import pytest
 
 from study_bot.db import DB
 from study_bot.models import Task
-from study_bot.sources.moodle import PAGE, MoodleSessionPortal, clean_subject, event_to_task, save_cookie
+from study_bot.sources.moodle import PAGE, MoodleSessionPortal, clean_subject, event_to_task
 from study_bot.sources.portal import PortalAuthError
 
 # Форма события как у online-edu.mirea.ru (поля урезаны до используемых)
@@ -25,11 +25,7 @@ EVENT = {
 MY_PAGE = '<script>M.cfg = {"wwwroot":"https://online-edu.mirea.ru","sesskey":"SK123"};</script>'
 
 
-def portal(tmp_path, ajax, cookie="abc", my_page=None) -> MoodleSessionPortal:
-    path = tmp_path / "moodle_session.txt"
-    if cookie:
-        save_cookie(path, cookie)
-
+def portal(ajax, cookie="abc", my_page=None) -> MoodleSessionPortal:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["cookie"] == f"MoodleSession={cookie}"
         if request.url.path == "/my/":
@@ -39,7 +35,7 @@ def portal(tmp_path, ajax, cookie="abc", my_page=None) -> MoodleSessionPortal:
         [call] = json.loads(request.content)
         return httpx.Response(200, json=[ajax(call["args"])])
 
-    return MoodleSessionPortal("https://online-edu.mirea.ru/", path, lookback_days=60, transport=httpx.MockTransport(handler))
+    return MoodleSessionPortal("https://online-edu.mirea.ru/", lookback_days=60, transport=httpx.MockTransport(handler))
 
 
 def test_event_to_task():
@@ -63,7 +59,7 @@ def test_clean_subject(fullname, expected):
     assert clean_subject(fullname) == expected
 
 
-async def test_fetch_paginates(tmp_path):
+async def test_fetch_paginates():
     calls = []
 
     def ajax(args):
@@ -73,52 +69,45 @@ async def test_fetch_paginates(tmp_path):
             return {"error": False, "data": {"events": events, "firstid": 0, "lastid": PAGE - 1}}
         return {"error": False, "data": {"events": [{**EVENT, "id": 999}], "firstid": 999, "lastid": 999}}
 
-    tasks = await portal(tmp_path, ajax).fetch()
+    tasks = await portal(ajax).fetch("abc")
     assert len(tasks) == PAGE + 1
     assert calls[1]["aftereventid"] == PAGE - 1
 
 
-async def test_redirect_to_login_is_auth_error(tmp_path):
+async def test_redirect_to_login_is_auth_error():
     login = httpx.Response(303, headers={"Location": "https://online-edu.mirea.ru/login/index.php"})
     with pytest.raises(PortalAuthError):
-        await portal(tmp_path, lambda a: {}, my_page=login).fetch()
+        await portal(lambda a: {}, my_page=login).fetch("abc")
 
 
-async def test_missing_cookie_is_auth_error(tmp_path):
+async def test_missing_cookie_is_auth_error():
     with pytest.raises(PortalAuthError):
-        await portal(tmp_path, lambda a: {}, cookie="").fetch()
+        await portal(lambda a: {}).fetch(None)
 
 
-async def test_expired_session_in_ajax_is_auth_error(tmp_path):
+async def test_expired_session_in_ajax_is_auth_error():
     def ajax(args):
         return {"error": True, "exception": {"errorcode": "servicerequireslogin", "message": "login"}}
 
     with pytest.raises(PortalAuthError):
-        await portal(tmp_path, ajax).fetch()
+        await portal(ajax).fetch("abc")
 
 
-async def test_other_moodle_error_is_not_auth(tmp_path):
+async def test_other_moodle_error_is_not_auth():
     def ajax(args):
         return {"error": True, "exception": {"errorcode": "invalidparameter"}}
 
     with pytest.raises(RuntimeError):
-        await portal(tmp_path, ajax).fetch()
-
-
-def test_cookie_file_is_private(tmp_path):
-    path = tmp_path / "c.txt"
-    save_cookie(path, "  value\n")
-    assert path.read_text() == "value"
-    assert path.stat().st_mode & 0o077 == 0
+        await portal(ajax).fetch("abc")
 
 
 def test_close_missing_marks_submitted_portal_tasks_done():
     db = DB(":memory:")
     now = datetime(2026, 10, 17, tzinfo=timezone.utc)
     for sid, days in [("1", 3), ("2", 5), ("old", -90)]:
-        db.upsert(Task(source="portal", source_id=sid, title=sid, deadline=now + timedelta(days=days)))
-    db.upsert(Task(source="tg", source_id="x", title="из чата", deadline=now))
+        db.upsert(Task(source="portal", source_id=sid, title=sid, deadline=now + timedelta(days=days), user_id=1))
+    db.upsert(Task(source="tg", source_id="x", title="из чата", deadline=now, user_id=1))
 
-    closed = db.close_missing("portal", {"1"}, since=now - timedelta(days=60))
+    closed = db.close_missing(1, "portal", {"1"}, since=now - timedelta(days=60))
     assert [t.source_id for t in closed] == ["2"]  # "old" вне окна выдачи — не трогаем
-    assert sorted(t.source_id for t in db.list_open()) == ["1", "old", "x"]
+    assert sorted(t.source_id for t in db.list_open(1)) == ["1", "old", "x"]

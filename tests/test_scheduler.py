@@ -1,4 +1,4 @@
-"""Расписание: сводку, проспанную Mac'ом, присылаем после пробуждения; пропущенные опросы схлопываем."""
+"""Расписание: сводки проверяются раз в минуту (время у каждого своё), пропущенные опросы схлопываются."""
 
 import asyncio
 
@@ -6,26 +6,27 @@ from study_bot.config import Settings
 from study_bot.main import build_scheduler, follow_wall_clock
 
 
-class Stub:
+class StubPoller:
     def __init__(self):
         self.s = Settings(_env_file=None, bot_token="1:x", owner_id=1)
+        self.notifier = self
 
     def now(self):
         from datetime import datetime
         return datetime.now(self.s.zone)
 
-    async def send_digest(self):
+    async def send_due_digests(self):
         pass
 
-    async def poll(self):
+    async def poll_all(self):
         pass
 
 
-def test_digest_survives_sleep_and_polls_coalesce():
-    n = Stub()
-    sch = build_scheduler(n.s, n, n)
+def test_digest_checked_every_minute_and_polls_coalesce():
+    p = StubPoller()
+    sch = build_scheduler(p.s, p)
     digest, portal = sch.get_job("digest"), sch.get_job("portal")
-    assert digest.misfire_grace_time == 6 * 3600 and digest.coalesce
+    assert digest.trigger.interval.total_seconds() == 60 and digest.coalesce and digest.max_instances == 1
     assert portal.misfire_grace_time is None and portal.coalesce and portal.max_instances == 1
 
 

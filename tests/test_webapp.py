@@ -35,6 +35,7 @@ def sign(user_id: int, auth_date: int | None = None, token: str = TOKEN) -> str:
 async def api():
     s = Settings(_env_file=None, bot_token=TOKEN, owner_id=OWNER)
     db = DB(":memory:")
+    db.add_user(OWNER, "я")
     client = TestClient(TestServer(build_app(s, db)))
     await client.start_server()
     client.db = db
@@ -48,7 +49,7 @@ async def test_requires_telegram_signature(api):
     assert (await api.get("/api/tasks", headers={"Authorization": "tma " + sign(OWNER, token="1:other")})).status == 401
 
 
-async def test_rejects_other_users_and_stale_data(api):
+async def test_rejects_uninvited_users_and_stale_data(api):
     assert (await api.get("/api/tasks", headers={"Authorization": "tma " + sign(42)})).status == 403
     old = int(time.time()) - 3 * 86400
     assert (await api.get("/api/tasks", headers={"Authorization": "tma " + sign(OWNER, old)})).status == 401
@@ -89,13 +90,13 @@ async def test_validation_messages(api, body, message):
 
 
 async def test_editing_portal_task_protects_it_and_delete_hides_it(api):
-    api.db.upsert(Task(source="portal", source_id="9", title="КР 3", url="https://online-edu.mirea.ru/x"))
-    tid = api.db.list_open()[0].id
+    api.db.upsert(Task(source="portal", source_id="9", title="КР 3", url="https://online-edu.mirea.ru/x", user_id=OWNER))
+    tid = api.db.list_open(OWNER)[0].id
     r = await api.patch(f"/api/tasks/{tid}", json={"deadline": "2026-10-28T12:00"}, headers=api.auth)
     assert (await r.json())["edited"] is True
 
     assert (await api.delete(f"/api/tasks/{tid}", headers=api.auth)).status == 204
-    api.db.upsert(Task(source="portal", source_id="9", title="КР 3"))  # следующий опрос СДО
+    api.db.upsert(Task(source="portal", source_id="9", title="КР 3", user_id=OWNER))  # следующий опрос СДО
     assert (await (await api.get("/api/tasks", headers=api.auth)).json())["tasks"] == []
 
 
@@ -115,3 +116,16 @@ async def test_dev_mode_refuses_public_host():
 async def test_index_links_versioned_static(api):
     html = await (await api.get("/")).text()
     assert "/static/app.js?v=" in html and "/static/style.css?v=" in html
+
+
+async def test_each_user_sees_and_edits_only_own_tasks(api):
+    friend = 555
+    api.db.add_user(friend, "друг")
+    as_friend = {"Authorization": "tma " + sign(friend)}
+    mine = await (await api.post("/api/tasks", json={"title": "моё"}, headers=api.auth)).json()
+    await api.post("/api/tasks", json={"title": "его"}, headers=as_friend)
+
+    assert [t["title"] for t in (await (await api.get("/api/tasks", headers=as_friend)).json())["tasks"]] == ["его"]
+    assert (await api.patch(f"/api/tasks/{mine['id']}", json={"done": True}, headers=as_friend)).status == 404
+    assert (await api.delete(f"/api/tasks/{mine['id']}", headers=as_friend)).status == 404
+    assert [t["title"] for t in (await (await api.get("/api/tasks", headers=api.auth)).json())["tasks"]] == ["моё"]

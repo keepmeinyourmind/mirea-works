@@ -1,13 +1,12 @@
-"""Источник дедлайнов с портала вуза. Для СДО МИРЭА (Moodle) — см. moodle.py.
+"""Источник дедлайнов с портала вуза. Для СДО МИРЭА (Moodle) — см. moodle.py."""
 
-Ручная проверка: uv run python -m study_bot.sources.portal
-"""
-
-import asyncio
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from ..config import Settings
 from ..models import Task
+
+if TYPE_CHECKING:
+    from .moodle_pages import PortalStatus
 
 
 class PortalAuthError(Exception):
@@ -15,14 +14,21 @@ class PortalAuthError(Exception):
 
 
 class PortalSource(Protocol):
-    async def fetch(self) -> list[Task]:
-        """Все актуальные задания с портала. source="portal", source_id — id задания на портале."""
+    async def fetch(self, cookie: str | None) -> list[Task]:
+        """Все актуальные задания пользователя с портала. source="portal", source_id — id задания на портале."""
+        ...
+
+    async def check(self, cookie: str | None, tasks: list[Task]) -> dict[int, "PortalStatus"]:
+        """Баллы и статус со страниц заданий: {task.id: PortalStatus}."""
         ...
 
 
 class NullPortal:
-    async def fetch(self) -> list[Task]:
+    async def fetch(self, cookie: str | None) -> list[Task]:
         return []
+
+    async def check(self, cookie: str | None, tasks: list[Task]) -> dict:
+        return {}
 
 
 def make_portal(settings: Settings) -> PortalSource:
@@ -32,16 +38,6 @@ def make_portal(settings: Settings) -> PortalSource:
         case "moodle":
             from .moodle import MoodleSessionPortal
 
-            return MoodleSessionPortal(settings.portal_url, settings.portal_cookie_path, settings.portal_lookback_days)
+            return MoodleSessionPortal(settings.portal_url, settings.portal_lookback_days)
         case other:
             raise ValueError(f"Неизвестный PORTAL_KIND={other!r}")
-
-
-async def _main() -> None:
-    portal = make_portal(Settings())
-    for t in await portal.fetch():
-        print(f"{t.deadline:%d.%m %H:%M}" if t.deadline else "без срока", "|", t.subject, "|", t.title, "|", t.url)
-
-
-if __name__ == "__main__":
-    asyncio.run(_main())

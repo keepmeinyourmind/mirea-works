@@ -50,23 +50,19 @@ def _strip_html(html: str | None) -> str | None:
     return re.sub(r"<[^>]+>", " ", html) if html else None
 
 
-def read_cookie(path: Path) -> str:
+def read_legacy_cookie(path: Path) -> str:
+    """Cookie из однопользовательской версии (data/moodle_session.txt) — только для переноса в базу."""
     try:
         return path.read_text().strip()
     except FileNotFoundError:
         return ""
 
 
-def save_cookie(path: Path, value: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(value.strip())
-    path.chmod(0o600)
-
-
 class MoodleSessionPortal:
-    def __init__(self, base_url: str, cookie_file: Path, lookback_days: int, transport: httpx.AsyncBaseTransport | None = None):
+    """Один объект на всех пользователей: cookie передаётся в каждый вызов."""
+
+    def __init__(self, base_url: str, lookback_days: int, transport: httpx.AsyncBaseTransport | None = None):
         self.base = base_url.rstrip("/")
-        self.cookie_file = cookie_file
         self.lookback_days = lookback_days
         self.transport = transport
 
@@ -104,8 +100,7 @@ class MoodleSessionPortal:
             raise RuntimeError(f"Moodle {method}: {exc.get('errorcode')}: {exc.get('message')}")
         return res["data"]
 
-    async def fetch(self) -> list[Task]:
-        cookie = read_cookie(self.cookie_file)
+    async def fetch(self, cookie: str | None) -> list[Task]:
         if not cookie:
             raise PortalAuthError("cookie портала не задана")
         since = int(datetime.now(timezone.utc).timestamp()) - self.lookback_days * 86400
@@ -121,9 +116,8 @@ class MoodleSessionPortal:
                     return tasks
                 args = {**args, "aftereventid": data["lastid"]}
 
-    async def check(self, tasks: list[Task]) -> dict[int, PortalStatus]:
+    async def check(self, cookie: str | None, tasks: list[Task]) -> dict[int, PortalStatus]:
         """Статус и баллы со страниц заданий. Один клиент на пачку — страницы грузим по очереди."""
-        cookie = read_cookie(self.cookie_file)
         if not cookie:
             raise PortalAuthError("cookie портала не задана")
         result: dict[int, PortalStatus] = {}

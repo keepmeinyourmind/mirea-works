@@ -10,9 +10,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    # Бот (@BotFather) и твой user id — в личке бот отвечает только тебе
+    # Бот (@BotFather) и id админа (тебя): приглашает других, получает задания из групп CHAT_IDS
     bot_token: str
     owner_id: int
+    # Ключ шифрования cookie СДО в базе (Fernet). Сгенерировать: python -c "from study_bot.vault import new_key; print(new_key())"
+    cookie_key: str = ""
     # Если Telegram недоступен напрямую (сервер в России): socks5://xray:10808 или http://127.0.0.1:10809
     telegram_proxy: str = ""
 
@@ -65,6 +67,6 @@ class Settings(BaseSettings):
         return self.data_dir / "tasks.sqlite3"
 
     @property
-    def portal_cookie_path(self) -> Path:
-        # Значение cookie MoodleSession; обновляется командой /cookie
+    def legacy_cookie_path(self) -> Path:
+        # Cookie однопользовательской версии — при запуске переносится в базу (зашифрованной) и удаляется
         return self.data_dir / "moodle_session.txt"
