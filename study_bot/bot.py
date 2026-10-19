@@ -8,6 +8,7 @@ from datetime import datetime
 import anthropic
 from aiogram import Bot, F, Router
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.enums import ChatType
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
@@ -69,7 +70,12 @@ class Notifier:
     def __init__(self, settings: Settings, db: DB):
         self.s = settings
         self.db = db
-        self.bot = Bot(settings.bot_token, default=DefaultBotProperties(parse_mode="HTML", link_preview_is_disabled=True))
+        # Прокси — только для запросов к Telegram; СДО и всё остальное идёт напрямую
+        session = AiohttpSession(proxy=settings.telegram_proxy) if settings.telegram_proxy else None
+        self.bot = Bot(
+            settings.bot_token, session=session,
+            default=DefaultBotProperties(parse_mode="HTML", link_preview_is_disabled=True),
+        )
 
     def now(self) -> datetime:
         return datetime.now(self.s.zone)

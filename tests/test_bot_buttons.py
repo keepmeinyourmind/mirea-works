@@ -42,3 +42,16 @@ def test_bot_texts_have_only_valid_html_tags():
     for text in (HELP, COOKIE_HELP):
         assert set(re.findall(r"</?([^\s>/]+)", text)) <= {"b", "i", "code", "a"}
     assert "&lt;текст&gt;" in HELP
+
+
+async def test_telegram_proxy_is_used_only_when_set():
+    from study_bot.bot import Notifier
+    from study_bot.config import Settings
+    from study_bot.db import DB
+
+    plain = Notifier(Settings(_env_file=None, bot_token="1:x", owner_id=1), DB(":memory:"))
+    assert plain.bot.session.proxy is None
+    proxied = Notifier(Settings(_env_file=None, bot_token="1:x", owner_id=1, telegram_proxy="socks5://xray:10808"), DB(":memory:"))
+    assert proxied.bot.session.proxy == "socks5://xray:10808"
+    await plain.bot.session.close()
+    await proxied.bot.session.close()
