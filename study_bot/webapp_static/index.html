@@ -91,6 +91,29 @@
     <button class="danger-link" id="delete-btn"><i class="ti ti-trash"></i> Удалить задание</button>
   </div>
 </main>
+<script>
+  // Нарочно старый JavaScript (ES5): этот кусок работает даже там, где app.js запуститься не сможет
+  (function () {
+    // Edge 18 (AyuGram и старый Telegram Desktop на Windows) не знает gap во flex — тогда отступы полями (style.css, .no-gap)
+    var d = document.createElement("div");
+    d.style.display = "flex";
+    d.style.flexDirection = "column";
+    d.style.rowGap = "1px";
+    d.appendChild(document.createElement("div"));
+    d.appendChild(document.createElement("div"));
+    document.body.appendChild(d);
+    if (d.scrollHeight !== 1) document.documentElement.className += " no-gap";
+    document.body.removeChild(d);
+    // app.js так и не запустился — объясняем, что делать, вместо пустой страницы
+    setTimeout(function () {
+      if (window.__studybotStarted) return;
+      var e = document.getElementById("error");
+      e.textContent = "Встроенный браузер этой версии Telegram слишком старый для приложения. " +
+        "Установи «Microsoft Edge WebView2 Runtime» с сайта microsoft.com и перезапусти Telegram — или открой бота с телефона.";
+      e.hidden = false;
+    }, 4000);
+  })();
+</script>
 <script src="/static/app.js"></script>
 </body>
 </html>

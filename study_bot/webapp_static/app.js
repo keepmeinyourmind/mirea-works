@@ -1,5 +1,8 @@
 // StudyBot Mini App: неделя, ближайший дедлайн, задания по дням и карточка. Данные — через API бота (/api/tasks).
 "use strict";
+// Без ?? и {...obj}: AyuGram и старый Telegram Desktop на Windows открывают приложение в Edge 18 (EdgeHTML),
+// который такой синтаксис не понимает — скрипт не запустился бы целиком.
+window.__studybotStarted = true;
 
 const tg = window.Telegram && window.Telegram.WebApp;
 const inTg = !!(tg && tg.initData);
@@ -89,13 +92,13 @@ function renderSheet() {
     return `<button class="pal ${on ? "on" : ""}" data-pal="${p.id}" aria-pressed="${on}">
       <span class="sw" style="background:${a}"><i style="background:${b}"></i></span>${p.name}</button>`;
   }).join("");
-  for (const b of $("modes").children) {
+  for (const b of Array.from($("modes").children)) {
     b.classList.toggle("on", b.dataset.mode === theme.mode);
     b.setAttribute("aria-pressed", b.dataset.mode === theme.mode);
   }
 }
 function setTheme(patch) {
-  theme = { ...theme, ...patch };
+  theme = Object.assign({}, theme, patch);
   store(THEME_KEY, JSON.stringify(theme));
   applyTheme();
   renderSheet();
@@ -113,7 +116,7 @@ function closeSheet() {
 
 // ---------- мелочи ----------
 
-const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmtNum = (n) => (Number.isInteger(n) ? String(n) : String(n).replace(".", ","));
 function pl(n, one, few, many) {
   n = Math.floor(Math.abs(n));
@@ -174,7 +177,7 @@ function statusOf(t) {
     }
     case "quiz": {
       if (t.attempts_total == null) return null;
-      const used = t.attempts_used ?? 0;
+      const used = t.attempts_used || 0;
       const best = t.grade != null ? ` · ${fmtNum(t.grade)} из ${pts}` : "";
       return {
         cls: "st-info", short: used ? `Попытка ${used} из ${t.attempts_total}${best}` : "",
@@ -258,7 +261,8 @@ function renderHeader(vis, open, upcoming, late, now) {
 
   const all = vis.filter(inWeek);
   const done = all.filter((t) => t.done).length;
-  $("ring").toggleAttribute("hidden", !all.length); // у SVG нет свойства .hidden
+  // у SVG нет свойства .hidden, а toggleAttribute нет в Edge 18
+  if (all.length) $("ring").removeAttribute("hidden"); else $("ring").setAttribute("hidden", "");
   $("ring-fg").setAttribute("stroke-dasharray", `${(132 * done) / (all.length || 1)} 132`);
   $("ring-text").textContent = `${done}/${all.length}`;
   $("ring").setAttribute("aria-label", `Сделано ${done} из ${all.length} за неделю`);
@@ -354,7 +358,7 @@ function openEdit(task) {
   $("subjects").innerHTML = subjects.map((s) => `<option value="${esc(s)}">`).join("");
   $("f-date").value = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` : "";
   $("f-time").value = d ? hm(d) : "23:59";
-  $("f-points").value = current.points ?? "";
+  $("f-points").value = current.points == null ? "" : current.points;
   $("points-hint").textContent = current.source === "portal" && current.points != null && !current.edited ? "из СДО" : "";
   $("url-field").hidden = !!current.id && current.source !== "manual";
   $("f-url").value = current.source === "manual" ? current.url || "" : "";
@@ -381,7 +385,7 @@ function openEdit(task) {
 function renderStatus() {
   const t = current;
   if (t.source !== "portal") { $("status-box").innerHTML = ""; return; }
-  const st = statusOf(t) || statusOf({ ...t, status: "none" });
+  const st = statusOf(t) || statusOf(Object.assign({}, t, { status: "none" }));
   let notes = "";
   if (t.auto_done && t.done) notes += `<div class="note ok"><i class="ti ti-circle-check"></i><span>Отмечено автоматически: задание сдано в СДО</span></div>`;
   if (t.status === "draft") notes += `<div class="note warn"><i class="ti ti-alert-triangle"></i><span>Файл загружен, но не отправлен. Нажми «Отправить на проверку» в СДО</span></div>`;
@@ -557,7 +561,7 @@ window.addEventListener("error", (e) => showFatal(e.message));
 window.addEventListener("unhandledrejection", (e) => showFatal((e.reason && e.reason.message) || String(e.reason)));
 
 async function start() {
-  try { theme = { ...theme, ...JSON.parse(localStorage.getItem(THEME_KEY) || "{}") }; } catch (e) { /* нет — по умолчанию */ }
+  try { theme = Object.assign({}, theme, JSON.parse(localStorage.getItem(THEME_KEY) || "{}")); } catch (e) { /* нет — по умолчанию */ }
   try { filter = localStorage.getItem(FILTER_KEY) || null; } catch (e) { /* нет — все предметы */ }
   applyTheme();
   if (inTg) {
@@ -567,12 +571,14 @@ async function start() {
     tgSafe(() => tg.BackButton.onClick(onBack));
     tgSafe(() => tg.MainButton.onClick(save));
   } else {
-    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+    const mq = matchMedia("(prefers-color-scheme: dark)");
+    if (mq.addEventListener) mq.addEventListener("change", applyTheme);
+    else if (mq.addListener) mq.addListener(applyTheme); // старые браузеры
   }
   // Сначала задания, потом настройки из облака — облако не должно задерживать список
   await load();
   renderList();
-  try { theme = { ...theme, ...JSON.parse((await restore(THEME_KEY)) || "{}") }; } catch (e) { /* битое значение */ }
+  try { theme = Object.assign({}, theme, JSON.parse((await restore(THEME_KEY)) || "{}")); } catch (e) { /* битое значение */ }
   applyTheme();
   filter = (await restore(FILTER_KEY)) || filter;
   renderList();
