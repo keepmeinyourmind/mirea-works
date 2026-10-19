@@ -36,16 +36,30 @@ let theme = { palette: "indigo", mode: "auto" };
 
 // ---------- хранение настроек ----------
 
+// CloudStorage есть с версии 6.9; в старом Telegram Desktop метод бросает исключение или не отвечает вовсе
+const hasBack = () => inTg && !!tg.BackButton && (!tg.isVersionAtLeast || tg.isVersionAtLeast("6.1"));
+const hasCloud = () => inTg && !!tg.CloudStorage && (!tg.isVersionAtLeast || tg.isVersionAtLeast("6.9"));
+
 function store(key, value) {
-  if (inTg && tg.CloudStorage) tg.CloudStorage.setItem(key, value, () => {});
+  try { if (hasCloud()) tg.CloudStorage.setItem(key, value, () => {}); } catch (e) { /* нет облака — хватит localStorage */ }
   try { localStorage.setItem(key, value); } catch (e) { /* приватный режим — не страшно */ }
 }
 function restore(key) {
   const local = () => { try { return localStorage.getItem(key); } catch (e) { return null; } };
   return new Promise((resolve) => {
-    if (inTg && tg.CloudStorage) tg.CloudStorage.getItem(key, (err, v) => resolve(err ? local() : v || local()));
-    else resolve(local());
+    if (!hasCloud()) return resolve(local());
+    const timer = setTimeout(() => resolve(local()), 1500); // облако молчит — не держим приложение
+    try {
+      tg.CloudStorage.getItem(key, (err, v) => { clearTimeout(timer); resolve(err ? local() : v || local()); });
+    } catch (e) {
+      clearTimeout(timer);
+      resolve(local());
+    }
   });
+}
+// Вызов метода Telegram, которого может не быть в старом клиенте
+function tgSafe(fn) {
+  try { fn(); } catch (e) { /* старый клиент — без этой мелочи */ }
 }
 
 // ---------- оформление ----------
@@ -90,11 +104,11 @@ function setTheme(patch) {
 function openSheet() {
   renderSheet();
   $("theme-sheet").hidden = false;
-  if (inTg) tg.BackButton.show();
+  if (inTg) tgSafe(() => tg.BackButton.show());
 }
 function closeSheet() {
   $("theme-sheet").hidden = true;
-  if (inTg && !current) tg.BackButton.hide();
+  if (inTg && !current) tgSafe(() => tg.BackButton.hide());
 }
 
 // ---------- мелочи ----------
@@ -353,8 +367,9 @@ function openEdit(task) {
   $("edit-screen").hidden = false;
   scrollTo(0, 0);
   if (inTg) {
-    tg.BackButton.show();
-    tg.MainButton.setParams({ text: isNew ? "Добавить" : "Сохранить", is_visible: true, is_active: true });
+    tgSafe(() => tg.BackButton.show());
+    tgSafe(() => tg.MainButton.setParams({ text: isNew ? "Добавить" : "Сохранить", is_visible: true, is_active: true }));
+    if (!hasBack()) $("dev-back").hidden = false; // в старом клиенте нет кнопки «Назад» Telegram
   } else {
     $("dev-back").hidden = false;
     $("save-btn").hidden = false;
@@ -392,7 +407,7 @@ function closeEdit() {
   current = null;
   $("edit-screen").hidden = true;
   $("list-screen").hidden = false;
-  if (inTg) { tg.BackButton.hide(); tg.MainButton.hide(); }
+  if (inTg) { tgSafe(() => tg.BackButton.hide()); tgSafe(() => tg.MainButton.hide()); }
   renderList();
 }
 
@@ -433,7 +448,7 @@ async function save() {
 }
 
 function setBusy(on) {
-  if (inTg) on ? tg.MainButton.showProgress() : tg.MainButton.hideProgress();
+  if (inTg) tgSafe(() => (on ? tg.MainButton.showProgress() : tg.MainButton.hideProgress()));
   $("save-btn").disabled = on;
 }
 
@@ -451,7 +466,11 @@ async function remove() {
 }
 
 function confirmBox(text) {
-  if (inTg && tg.showConfirm) return new Promise((resolve) => tg.showConfirm(text, resolve));
+  if (inTg && tg.showConfirm && (!tg.isVersionAtLeast || tg.isVersionAtLeast("6.2"))) {
+    return new Promise((resolve) => {
+      try { tg.showConfirm(text, resolve); } catch (e) { resolve(window.confirm(text)); }
+    });
+  }
   return Promise.resolve(window.confirm(text));
 }
 
@@ -473,16 +492,22 @@ async function toggleDone(id) {
 
 function haptic(kind) {
   if (!inTg || !tg.HapticFeedback) return;
-  if (kind === "light") tg.HapticFeedback.impactOccurred("light");
-  else if (kind === "select") tg.HapticFeedback.selectionChanged();
-  else tg.HapticFeedback.notificationOccurred(kind);
+  tgSafe(() => {
+    if (kind === "light") tg.HapticFeedback.impactOccurred("light");
+    else if (kind === "select") tg.HapticFeedback.selectionChanged();
+    else tg.HapticFeedback.notificationOccurred(kind);
+  });
 }
 
 function openLink(url) {
   if (!inTg) return false;
-  if (/^https:\/\/t\.me\//.test(url)) tg.openTelegramLink(url);
-  else tg.openLink(url);
-  return true;
+  try {
+    if (/^https:\/\/t\.me\//.test(url)) tg.openTelegramLink(url);
+    else tg.openLink(url);
+    return true;
+  } catch (e) {
+    return false; // откроется обычной ссылкой
+  }
 }
 
 // ---------- события ----------
@@ -523,23 +548,33 @@ $("delete-btn").addEventListener("click", remove);
 $("form").addEventListener("submit", (e) => { e.preventDefault(); save(); });
 $("f-title").addEventListener("input", () => { $("form-error").textContent = ""; });
 
+function showFatal(msg) {
+  $("error").textContent = `Приложение не запустилось: ${msg}. Обнови Telegram или открой бота с телефона.`;
+  $("error").hidden = false;
+}
+// Любая ошибка — текстом на экране, а не пустой заготовкой страницы
+window.addEventListener("error", (e) => showFatal(e.message));
+window.addEventListener("unhandledrejection", (e) => showFatal((e.reason && e.reason.message) || String(e.reason)));
+
 async function start() {
   try { theme = { ...theme, ...JSON.parse(localStorage.getItem(THEME_KEY) || "{}") }; } catch (e) { /* нет — по умолчанию */ }
+  try { filter = localStorage.getItem(FILTER_KEY) || null; } catch (e) { /* нет — все предметы */ }
   applyTheme();
   if (inTg) {
-    tg.ready();
-    tg.expand();
-    tg.onEvent("themeChanged", applyTheme);
-    tg.BackButton.onClick(onBack);
-    tg.MainButton.onClick(save);
+    tgSafe(() => tg.ready());
+    tgSafe(() => tg.expand());
+    tgSafe(() => tg.onEvent("themeChanged", applyTheme));
+    tgSafe(() => tg.BackButton.onClick(onBack));
+    tgSafe(() => tg.MainButton.onClick(save));
   } else {
     matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
   }
-  // Оформление синхронизируется между устройствами через CloudStorage
+  // Сначала задания, потом настройки из облака — облако не должно задерживать список
+  await load();
+  renderList();
   try { theme = { ...theme, ...JSON.parse((await restore(THEME_KEY)) || "{}") }; } catch (e) { /* битое значение */ }
   applyTheme();
-  filter = (await restore(FILTER_KEY)) || null;
-  await load();
+  filter = (await restore(FILTER_KEY)) || filter;
   renderList();
   // Кнопка «Открыть» под уведомлением ведёт сразу в карточку: ?task=<id>
   const wanted = Number(new URLSearchParams(location.search).get("task"));
