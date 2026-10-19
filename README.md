@@ -77,13 +77,27 @@ scripts/autostart.sh uninstall   # убрать
 
 **В Telegram** приложение откроется только по https: нужен `WEBAPP_URL` (VPS + домен, см. ниже). Кнопку меню бот ставит сам при запуске.
 
-## VPS
+## Сервер
 
+Бот работает на VPS в Москве (`ssh studybot`), приложение открыто по адресу https://mirea-hometask.duckdns.org. Внутри три контейнера ([docker-compose.yml](docker-compose.yml)):
+- **bot** — бот и API приложения;
+- **xray** — клиент VLESS. Из российского дата-центра Telegram и Claude напрямую недоступны, поэтому бот ходит к ним через туннель (`TELEGRAM_PROXY`, `HTTPS_PROXY`). СДО открывается напрямую;
+- **caddy** — https: сам получает и продлевает сертификат Let's Encrypt.
+
+Наружу открыты только порты 80 и 443. Конфиг Xray собран из ссылки VLESS прямо на сервере (`/root/xray`), в git его нет.
+
+**Обновить бота** после изменений в коде:
 ```bash
-rsync -av --exclude .venv ./ vps:~/studybot/
-ssh vps 'cd ~/studybot && docker compose up -d --build && docker compose logs -f'
+scripts/deploy.sh
 ```
-`.env` и `data/` (база и cookie портала) в git не попадают — перенеси `.env` на сервер руками, cookie пришли боту командой `/cookie` уже там.
+Скрипт прогонит тесты, скопирует код и `.env`, сохранит копию базы (5 последних в `data/`) и перезапустит контейнеры.
+
+**Логи:**
+```bash
+ssh studybot 'cd /root/studybot && docker compose --env-file deploy.env logs -f bot'
+```
+
+Бот на Mac при этом должен быть выключен (`scripts/autostart.sh uninstall`): два бота с одним токеном конфликтуют.
 
 ## Портал (СДО МИРЭА)
 

@@ -1,12 +1,41 @@
+# Сервер: бот + Xray (VLESS-клиент: Telegram и Claude недоступны из РФ напрямую) + Caddy (https для Mini App).
+# Запуск — через scripts/deploy.sh: он передаёт DOMAIN в deploy.env.
 services:
   bot:
     build: .
     env_file: .env
     environment:
-      # В контейнере слушаем все интерфейсы; наружу порт отдаём только на localhost — перед ним встанет Caddy с https
-      WEBAPP_HOST: 0.0.0.0
-    ports:
-      - "127.0.0.1:8080:8080"
+      WEBAPP_HOST: 0.0.0.0  # внутри сети compose; наружу порт не публикуется — только через Caddy
+      WEBAPP_DEV_NO_AUTH: "false"  # на сервере проверка подписи Telegram всегда включена
+      WEBAPP_URL: https://${DOMAIN:?нужен DOMAIN}
+      TELEGRAM_PROXY: socks5://xray:10808
+      # Claude (если задан ANTHROPIC_API_KEY) — через туннель; СДО — напрямую с российского IP
+      HTTPS_PROXY: http://xray:10809
+      NO_PROXY: online-edu.mirea.ru,localhost,127.0.0.1
     volumes:
-      - ./data:/app/data   # tasks.sqlite3 и cookie портала
+      - ./data:/app/data  # tasks.sqlite3 и cookie портала — переживают обновления
+    depends_on: [xray]
     restart: unless-stopped
+
+  xray:
+    image: ghcr.io/xtls/xray-core@sha256:592ec4d11f656db95598d01e76dbcc6e002d67360b96a5436500a938230f52c7  # 26.3.27
+    command: ["run", "-c", "/usr/local/etc/xray/config.json"]
+    volumes:
+      - /root/xray:/usr/local/etc/xray:ro  # конфиг собран из ссылки VLESS прямо на сервере, в git его нет
+    restart: unless-stopped
+
+  caddy:
+    image: caddy@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17  # 2.8.4-alpine
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?нужен DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data  # сертификаты Let's Encrypt
+      - caddy_config:/config
+    depends_on: [bot]
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

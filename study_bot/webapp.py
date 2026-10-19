@@ -165,8 +165,16 @@ async def delete_task(request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
-async def index(request: web.Request) -> web.FileResponse:
-    return web.FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+def static_version() -> str:
+    """Меняется при изменении app.js/style.css — встроенный браузер Telegram любит держать их в кэше."""
+    return str(int(max((STATIC / f).stat().st_mtime for f in ("app.js", "style.css"))))
+
+
+async def index(request: web.Request) -> web.Response:
+    v = static_version()
+    html = (STATIC / "index.html").read_text().replace("/static/app.js", f"/static/app.js?v={v}")
+    html = html.replace("/static/style.css", f"/static/style.css?v={v}")
+    return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
 async def _json(request: web.Request) -> dict:

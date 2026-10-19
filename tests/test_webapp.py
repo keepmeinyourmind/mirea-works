@@ -110,3 +110,8 @@ async def test_dev_mode_refuses_public_host():
     s = Settings(_env_file=None, bot_token=TOKEN, owner_id=OWNER, webapp_dev_no_auth=True, webapp_host="0.0.0.0")
     with pytest.raises(RuntimeError, match="только с WEBAPP_HOST=127.0.0.1"):
         await start_webapp(s, DB(":memory:"))
+
+
+async def test_index_links_versioned_static(api):
+    html = await (await api.get("/")).text()
+    assert "/static/app.js?v=" in html and "/static/style.css?v=" in html

@@ -1,0 +1,5 @@
+# Caddy сам получает и продлевает https-сертификат для домена и проксирует Mini App в бота
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy bot:8080
+}
