@@ -546,6 +546,7 @@ document.addEventListener("click", (e) => {
 // Колесо мыши над предметами листает их вбок (на телефоне — свайпом, как обычно)
 $("chips").addEventListener("wheel", (e) => {
   const el = $("chips");
+  if (e.ctrlKey) return; // Ctrl + колесо — это зум, его не трогаем
   if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
   el.scrollLeft += e.deltaY;
   e.preventDefault();
@@ -559,13 +560,40 @@ $("delete-btn").addEventListener("click", remove);
 $("form").addEventListener("submit", (e) => { e.preventDefault(); save(); });
 $("f-title").addEventListener("input", () => { $("form-error").textContent = ""; });
 
-function showFatal(msg) {
+let reported = 0;
+function showFatal(msg, where) {
   $("error").textContent = `Приложение не запустилось: ${msg}. Обнови Telegram или открой бота с телефона.`;
   $("error").hidden = false;
+  if (reported++ < 3) api("POST", "/api/client-error", { message: String(msg), where: where || "" }).catch(() => {});
 }
-// Любая ошибка — текстом на экране, а не пустой заготовкой страницы
-window.addEventListener("error", (e) => showFatal(e.message));
-window.addEventListener("unhandledrejection", (e) => showFatal((e.reason && e.reason.message) || String(e.reason)));
+const whereOf = (e) => (e && e.stack ? String(e.stack).split("\n").slice(0, 3).join(" | ") : "");
+// Любая ошибка — текстом на экране (и в лог сервера), а не пустой заготовкой страницы
+window.addEventListener("error", (e) => showFatal(e.message, `${e.filename}:${e.lineno}:${e.colno}`));
+// В Edge 18 этого события нет — поэтому ещё и start().catch ниже
+window.addEventListener("unhandledrejection", (e) => showFatal((e.reason && e.reason.message) || String(e.reason), whereOf(e.reason)));
+
+// Разовый замер: если у человека страница шире окна или колонка не по центру — шлём в лог, что вылезает
+let layoutReports = 0;
+function reportLayout() {
+  if (layoutReports >= 5) return;
+  const W = document.documentElement.clientWidth;
+  const box = $("list-screen").getBoundingClientRect();
+  const off = Math.abs(box.left - (W - box.right)) > 2;
+  if (document.body.scrollWidth <= W + 1 && !off) return;
+  const label = (e) => {
+    const r = e.getBoundingClientRect();
+    const cls = String(e.getAttribute("class") || "").split(" ")[0];
+    return `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}${cls ? "." + cls : ""} ${Math.round(r.left)}..${Math.round(r.right)}`;
+  };
+  const wide = Array.from(document.querySelectorAll("body *"))
+    .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > W + 1 || r.left < -1); })
+    .slice(0, 8).map(label);
+  layoutReports++;
+  api("POST", "/api/client-error", {
+    message: `вёрстка: окно ${W}, страница ${document.body.scrollWidth}, колонка ${Math.round(box.left)}..${Math.round(box.right)}, zoom ${window.devicePixelRatio}`,
+    where: wide.join(" ; "),
+  }).catch(() => {});
+}
 
 async function start() {
   try { theme = Object.assign({}, theme, JSON.parse(localStorage.getItem(THEME_KEY) || "{}")); } catch (e) { /* нет — по умолчанию */ }
@@ -585,6 +613,9 @@ async function start() {
   // Сначала задания, потом настройки из облака — облако не должно задерживать список
   await load();
   renderList();
+  setTimeout(reportLayout, 1500); // после шрифтов и картинок
+  let resizeTimer = 0; // и после зума или изменения размера окна
+  window.addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(reportLayout, 800); });
   try { theme = Object.assign({}, theme, JSON.parse((await restore(THEME_KEY)) || "{}")); } catch (e) { /* битое значение */ }
   applyTheme();
   filter = (await restore(FILTER_KEY)) || filter;
@@ -601,4 +632,4 @@ async function start() {
   setInterval(() => { if (!current && document.visibilityState === "visible") renderList(); }, 60000);
 }
 
-start();
+start().catch((e) => showFatal((e && e.message) || String(e), whereOf(e)));

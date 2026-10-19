@@ -87,16 +87,18 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .hello .pts { align-self: flex-start; white-space: normal; }
 .top-right { display: flex; align-items: center; gap: 8px; flex: none; }
 .ring { display: block; }
-.ring .bg { stroke: var(--track); } .ring .fg { stroke: var(--accent); transition: stroke-dasharray .3s; }
+.ring .bg { stroke: var(--track); } .ring .fg { stroke: var(--accent); }
 .ring text { fill: var(--text); font: 700 13px "Onest", sans-serif; }
-.icon-btn { width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; padding: 0; }
+/* Кнопки — без display:flex: Edge 18 (AyuGram, старый Telegram Desktop) не умеет flex внутри <button>, и они разъезжаются */
+.icon-btn { width: 44px; height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); display: inline-block; text-align: center; line-height: 42px; font-size: 20px; cursor: pointer; padding: 0; }
 
 /* неделя */
 .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-.day { height: 64px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 0; cursor: pointer; }
-.day .wd { font-size: 11px; color: var(--muted); }
-.day .n { font-size: 17px; font-weight: 600; }
-.day .dots { font-size: 11px; font-weight: 700; min-height: 13px; line-height: 13px; color: var(--accent); letter-spacing: 1px; }
+.day { height: 64px; min-width: 0; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); display: block; text-align: center; padding: 6px 0 0; cursor: pointer; }
+.day span { display: block; }
+.day .wd { font-size: 11px; line-height: 14px; color: var(--muted); }
+.day .n { font-size: 17px; line-height: 22px; font-weight: 600; margin-top: 1px; }
+.day .dots { font-size: 11px; font-weight: 700; height: 13px; line-height: 13px; margin-top: 1px; color: var(--accent); letter-spacing: 1px; }
 .day.today { border-color: var(--accent); }
 .day.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .day.on .wd, .day.on .dots { color: var(--on-accent); }
@@ -127,9 +129,11 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .late-wrap { display: flex; flex-direction: column; gap: 8px; }
 
 /* фильтр по предмету */
-.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
+.chips { display: block; white-space: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -ms-overflow-style: none; }
 .chips::-webkit-scrollbar { display: none; }
-.chip { flex: none; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.chip { display: inline-block; vertical-align: top; height: 36px; line-height: 34px; margin-right: 8px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.chip:last-child { margin-right: 0; }
+.chip .dot { display: inline-block; vertical-align: middle; margin: -2px 6px 0 0; }
 .chip.on { background: var(--text); border-color: var(--text); color: var(--bg); }
 
 /* дни */
@@ -153,7 +157,7 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .done .ctitle { text-decoration: line-through; color: var(--muted); }
 .done .pts { opacity: .5; }
 
-.chk { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--check); background: transparent; display: flex; align-items: center; justify-content: center; font-size: 15px; color: transparent; padding: 0; cursor: pointer; position: relative; }
+.chk { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--check); background: transparent; display: block; text-align: center; line-height: 22px; font-size: 15px; color: transparent; padding: 0; cursor: pointer; position: relative; }
 .chk::after { content: ""; position: absolute; inset: -9px; } /* палец попадает легче */
 .chk.on { background: var(--ok); border-color: var(--ok); color: #FFFFFF; }
 
@@ -165,7 +169,8 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .empty i { font-size: 34px; color: var(--accent); } .empty b { color: var(--text); font-weight: 600; }
 .error { color: var(--danger); }
 .fab-wrap { position: fixed; left: 0; right: 0; bottom: 0; padding: 12px 16px; padding: 12px max(16px, env(safe-area-inset-left, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-top: 1px solid var(--line); z-index: 5; }
-.main { width: 100%; height: 50px; border: 0; border-radius: 16px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.main { width: 100%; height: 50px; border: 0; border-radius: 16px; background: var(--accent); color: var(--on-accent); font-weight: 600; font-size: 16px; cursor: pointer; display: block; text-align: center; line-height: 50px; padding: 0 12px; }
+.main .ti { margin-right: 6px; }
 .main:disabled { opacity: .6; }
 .fab-wrap .main { max-width: 528px; margin: 0 auto; }
 
@@ -176,9 +181,9 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .sheet-head h2 { margin: 0; font-size: 18px; }
 .sheet h3 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
 .palettes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
-.pal { border: 2px solid var(--line); background: var(--surface); border-radius: 16px; padding: 10px 6px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.pal { border: 2px solid var(--line); background: var(--surface); border-radius: 16px; padding: 10px 6px; display: block; text-align: center; font-size: 13px; cursor: pointer; }
 .pal.on { border-color: var(--accent); }
-.sw { width: 40px; height: 40px; border-radius: 50%; position: relative; overflow: hidden; }
+.sw { display: block; width: 40px; height: 40px; margin: 0 auto 8px; border-radius: 50%; position: relative; overflow: hidden; }
 .sw i { position: absolute; inset: 0 0 0 50%; }
 .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
 .modes button { height: 40px; border: 0; border-radius: 10px; background: transparent; font-size: 14px; font-weight: 500; cursor: pointer; }
@@ -211,7 +216,8 @@ input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .link { color: var(--accent); padding: 4px 0; }
 .dark .link { color: var(--accent); }
 .dev-bar { margin-bottom: 4px; }
-@media (prefers-reduced-motion: no-preference) { .card, .chk, .day, .chip, .pal { transition: background .15s, border-color .15s; } }
+/* Никаких анимаций: при зуме окна в Telegram Desktop они «пружинят» */
+*, *::before, *::after { transition: none !important; animation: none !important; }
 
 /* ---------- Старые встроенные браузеры ----------
    AyuGram и старый Telegram Desktop на Windows без WebView2 открывают приложение в Edge 18 (EdgeHTML).
@@ -228,13 +234,11 @@ input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .no-gap .hero > * + *, .no-gap .actions > * + * { margin-top: 12px; }
 .no-gap .hero-actions > * + * { margin-left: 8px; margin-top: 0; }
 .no-gap .hello > * + *, .no-gap .gitems > * + *, .no-gap .late-wrap > * + *, .no-gap .cbody > * + *,
-.no-gap .fld > * + *, .no-gap .stbox > * + *, .no-gap .pal > * + *, .no-gap .empty > * + *, .no-gap .error > * + * { margin-top: 6px; }
-.no-gap .day > * + *, .no-gap .glabel > * + *, .no-gap .late-body > * + * { margin-top: 2px; }
+.no-gap .fld > * + *, .no-gap .stbox > * + *, .no-gap .empty > * + *, .no-gap .error > * + * { margin-top: 6px; }
+.no-gap .glabel > * + *, .no-gap .late-body > * + * { margin-top: 2px; }
 .no-gap .late > * + *, .no-gap .card > * + *, .no-gap .top > * + * { margin-left: 12px; }
 .no-gap .top-right > * + *, .no-gap .hero-head > * + *, .no-gap .count > * + *, .no-gap .hero-warn > * + *,
 .no-gap .crow > * + *, .no-gap .inline > * + *, .no-gap .note > * + *, .no-gap .openlink > * + * { margin-left: 8px; }
 .no-gap .subj > * + * { margin-left: 6px; }
-.no-gap .chip > .dot, .no-gap .main > .ti { margin-right: 6px; } /* рядом текст без своего элемента */
-.no-gap .chips > * { margin-right: 6px; }
 .no-gap .tags > * { margin: 0 6px 6px 0; }
 .no-gap #edit-screen > * + * { margin-top: 0; }

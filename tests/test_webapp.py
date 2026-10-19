@@ -129,3 +129,12 @@ async def test_each_user_sees_and_edits_only_own_tasks(api):
     assert (await api.patch(f"/api/tasks/{mine['id']}", json={"done": True}, headers=as_friend)).status == 404
     assert (await api.delete(f"/api/tasks/{mine['id']}", headers=as_friend)).status == 404
     assert [t["title"] for t in (await (await api.get("/api/tasks", headers=api.auth)).json())["tasks"]] == ["моё"]
+
+
+async def test_client_errors_go_to_server_log_only_from_users(api, caplog):
+    body = {"message": "x" * 2000, "where": "app.js:10:5"}
+    assert (await api.post("/api/client-error", json=body)).status == 401  # без подписи Telegram — нет
+    with caplog.at_level("WARNING", logger="study_bot.webapp"):
+        assert (await api.post("/api/client-error", json=body, headers=api.auth)).status == 204
+    assert "Ошибка в приложении у 777" in caplog.text and "app.js:10:5" in caplog.text
+    assert "x" * 501 not in caplog.text  # длинное сообщение обрезается

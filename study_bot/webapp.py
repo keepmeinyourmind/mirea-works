@@ -171,6 +171,19 @@ async def delete_task(request: web.Request) -> web.Response:
     return web.Response(status=204)
 
 
+async def client_error(request: web.Request) -> web.Response:
+    """Ошибка JavaScript из приложения — в лог сервера: так видно, что сломалось у человека в его Telegram."""
+    try:
+        body = await request.json()
+    except ValueError:
+        body = {}
+    msg = str(body.get("message") or "")[:500]
+    where = str(body.get("where") or "")[:200]
+    ua = request.headers.get("User-Agent", "")[:150]
+    log.warning("Ошибка в приложении у %s: %s | %s | %s", request[USER], msg, where, ua)
+    return web.Response(status=204)
+
+
 def static_version() -> str:
     """Меняется при изменении app.js/style.css — встроенный браузер Telegram любит держать их в кэше."""
     return str(int(max((STATIC / f).stat().st_mtime for f in ("app.js", "style.css"))))
@@ -202,6 +215,7 @@ def build_app(settings: Settings, db: DB) -> web.Application:
     app.router.add_post("/api/tasks", create_task)
     app.router.add_patch(r"/api/tasks/{id:\d+}", update_task)
     app.router.add_delete(r"/api/tasks/{id:\d+}", delete_task)
+    app.router.add_post("/api/client-error", client_error)
     app.router.add_static("/static", STATIC)
     return app
 
