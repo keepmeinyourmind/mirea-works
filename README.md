@@ -97,6 +97,15 @@ scripts/deploy.sh
 ```
 Скрипт прогонит тесты, скопирует код и `.env` на сервер, сохранит копию базы (5 последних, `data/tasks.backup-*.sqlite3`) и пересоберёт контейнеры.
 
+**Если бот перестал отвечать**, а в логах `Failed to fetch updates - Request timeout`, значит, не работает VPN-туннель. Чаще всего подписка сменила ключ. Обнови подписку в VPN-приложении, скопируй свежую ссылку `vless://…` в буфер обмена на Mac и выполни (ссылка уйдёт прямо на сервер, на экран не попадёт):
+```bash
+pbpaste | ssh studybot 'umask 077; cat > /root/vless.txt'
+```
+```bash
+ssh studybot 'python3 /root/studybot/scripts/xray_config.py && cd /root/studybot && docker compose --env-file deploy.env restart xray'
+```
+Бот сам переподключится в течение пары минут и ответит на всё, что ему написали за это время.
+
 **Логи:**
 ```bash
 ssh studybot 'cd /root/studybot && docker compose --env-file deploy.env logs -f bot'
