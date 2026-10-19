@@ -129,8 +129,6 @@ html { scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 /* фильтр по предмету */
 .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 0 16px; }
 .chips::-webkit-scrollbar { display: none; }
-/* Мышью строку не пролистать свайпом — на компьютере предметы переносятся на новые строки */
-@media (hover: hover) and (pointer: fine) { .chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; } }
 .chip { flex: none; height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 14px; font-weight: 500; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 6px; }
 .chip.on { background: var(--text); border-color: var(--text); color: var(--bg); }
 
@@ -237,5 +235,6 @@ input::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .no-gap .crow > * + *, .no-gap .inline > * + *, .no-gap .note > * + *, .no-gap .openlink > * + * { margin-left: 8px; }
 .no-gap .subj > * + * { margin-left: 6px; }
 .no-gap .chip > .dot, .no-gap .main > .ti { margin-right: 6px; } /* рядом текст без своего элемента */
-.no-gap .chips > *, .no-gap .tags > * { margin: 0 6px 6px 0; }
+.no-gap .chips > * { margin-right: 6px; }
+.no-gap .tags > * { margin: 0 6px 6px 0; }
 .no-gap #edit-screen > * + * { margin-top: 0; }

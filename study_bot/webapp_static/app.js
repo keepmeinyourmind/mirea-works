@@ -543,6 +543,13 @@ document.addEventListener("click", (e) => {
   const item = e.target.closest("#list-screen [data-id]");
   if (item) openEdit(tasks.find((t) => t.id === Number(item.dataset.id)));
 });
+// Колесо мыши над предметами листает их вбок (на телефоне — свайпом, как обычно)
+$("chips").addEventListener("wheel", (e) => {
+  const el = $("chips");
+  if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+  el.scrollLeft += e.deltaY;
+  e.preventDefault();
+}, { passive: false });
 $("new-btn").addEventListener("click", () => openEdit(null));
 $("theme-btn").addEventListener("click", openSheet);
 $("theme-close").addEventListener("click", closeSheet);
